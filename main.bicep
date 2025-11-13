@@ -27,6 +27,10 @@ param weeklyBackupDaysOfWeek array = [ 'Sunday', 'Wednesday' ]
 @allowed([ 'Daily', 'Weekly', 'Both' ])
 @description('Backup frequency for VM policies across regions')
 param backupFrequency string = 'Daily'
+@description('Backup schedule timezone (e.g., UTC)')
+param backupTimeZone string = 'UTC'
+@description('Instant Restore snapshot retention in days')
+param instantRestoreRetentionDays int = 2
 @allowed([ 'Enabled', 'Disabled' ])
 @description('Public network access setting for vaults')
 param publicNetworkAccess string = 'Enabled'
@@ -66,6 +70,8 @@ module policies './modules/backupPolicy.bicep' = [for (region, i) in regions: {
     weeklyBackupDaysOfWeek: weeklyBackupDaysOfWeek
     dailyRetentionDays: dailyRetentionDays
     weeklyRetentionDays: weeklyRetentionDays
+    backupTimeZone: backupTimeZone
+    instantRestoreRetentionDays: instantRestoreRetentionDays
   }
   dependsOn: [vaults[i]]
 }]

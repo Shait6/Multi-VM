@@ -24,6 +24,12 @@ param dailyRetentionDays int = 14
 @description('Retention in days for weekly backups')
 param weeklyRetentionDays int = 30
 
+@description('Time zone for backup scheduling (e.g., "UTC")')
+param backupTimeZone string = 'UTC'
+
+@description('Instant Restore snapshot retention in days')
+param instantRestoreRetentionDays int = 2
+
 // Reference existing vault as parent
 resource existingVault 'Microsoft.RecoveryServices/vaults@2025-02-01' existing = {
   name: vaultName
@@ -35,6 +41,7 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
   name: backupFrequency == 'Both' ? '${backupPolicyName}-daily' : backupPolicyName
   properties: {
     backupManagementType: 'AzureIaasVM'
+    instantRpRetentionRangeInDays: instantRestoreRetentionDays
     schedulePolicy: {
       schedulePolicyType: 'SimpleSchedulePolicy'
       scheduleRunFrequency: 'Daily'
@@ -51,7 +58,7 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
         }
       }
     }
-    timeZone: 'UTC'
+    timeZone: backupTimeZone
   }
 }
 
@@ -61,6 +68,7 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
   name: backupFrequency == 'Both' ? '${backupPolicyName}-weekly' : backupPolicyName
   properties: {
     backupManagementType: 'AzureIaasVM'
+    instantRpRetentionRangeInDays: instantRestoreRetentionDays
     schedulePolicy: {
       schedulePolicyType: 'SimpleSchedulePolicy'
       scheduleRunFrequency: 'Weekly'
@@ -77,7 +85,7 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
         }
       }
     }
-    timeZone: 'UTC'
+    timeZone: backupTimeZone
   }
 }
 

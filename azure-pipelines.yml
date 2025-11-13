@@ -62,6 +62,18 @@ parameters:
   type: string
   default: 'true'
   displayName: 'Tag value used to select VMs for remediation'
+- name: backupScheduleTimeString
+  type: string
+  default: '18:30'
+  displayName: 'Backup schedule time (HH:mm, UTC by default)'
+- name: backupTimeZone
+  type: string
+  default: 'UTC'
+  displayName: 'Backup schedule time zone'
+- name: instantRestoreRetentionDays
+  type: number
+  default: 2
+  displayName: 'Instant Restore retention (days)'
   
 pool:
   vmImage: 'windows-latest'
@@ -91,11 +103,15 @@ stages:
           az account set --subscription "${{ parameters.subscriptionId }}"
           $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
           $weeklyDays = "${{ parameters.weeklyBackupDaysOfWeekString }}".Split(',') | ForEach-Object { $_.Trim() }
+          $runTimes = @("${{ parameters.backupScheduleTimeString }}")
           $paramContent = @{
             backupFrequency        = @{ value = "${{ parameters.backupFrequency }}" }
             dailyRetentionDays     = @{ value = ${{ parameters.dailyRetentionDays }} }
             weeklyRetentionDays    = @{ value = ${{ parameters.weeklyRetentionDays }} }
             weeklyBackupDaysOfWeek = @{ value = $weeklyDays }
+            backupScheduleRunTimes = @{ value = $runTimes }
+            backupTimeZone         = @{ value = "${{ parameters.backupTimeZone }}" }
+            instantRestoreRetentionDays = @{ value = ${{ parameters.instantRestoreRetentionDays }} }
           }
           $paramContent | ConvertTo-Json -Depth 4 | Out-File bicep-params.json -Encoding utf8
           Write-Host "Starting deployment $deployName with backupFrequency=${{ parameters.backupFrequency }}"

@@ -36,6 +36,18 @@ on:
         description: 'Weekly retention days'
         required: false
         default: '30'
+      backupScheduleTime:
+        description: 'Backup schedule time (HH:mm)'
+        required: false
+        default: '18:30'
+      backupTimeZone:
+        description: 'Backup schedule time zone'
+        required: false
+        default: 'UTC'
+      instantRestoreRetentionDays:
+        description: 'Instant restore retention (days)'
+        required: false
+        default: '2'
       vmTagName:
         description: 'Tag name used to select VMs for remediation'
         required: false
@@ -58,6 +70,9 @@ jobs:
       WEEKLY_RETENTION: ${{ github.event.inputs.weeklyRetentionDays }}
       VM_TAG_NAME: ${{ github.event.inputs.vmTagName }}
       VM_TAG_VALUE: ${{ github.event.inputs.vmTagValue }}
+      BACKUP_TIME: ${{ github.event.inputs.backupScheduleTime }}
+      BACKUP_TZ: ${{ github.event.inputs.backupTimeZone }}
+      INSTANT_RESTORE_DAYS: ${{ github.event.inputs.instantRestoreRetentionDays }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -65,7 +80,7 @@ jobs:
       - name: Azure Login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.serivcon }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Bicep build (syntax check)
         shell: pwsh
@@ -83,6 +98,9 @@ jobs:
             dailyRetentionDays     = @{ value = [int]$env:DAILY_RETENTION }
             weeklyRetentionDays    = @{ value = [int]$env:WEEKLY_RETENTION }
             weeklyBackupDaysOfWeek = @{ value = $days }
+            backupScheduleRunTimes = @{ value = @($env:BACKUP_TIME) }
+            backupTimeZone         = @{ value = $env:BACKUP_TZ }
+            instantRestoreRetentionDays = @{ value = [int]$env:INSTANT_RESTORE_DAYS }
           }
           $paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8
           $deployName = "gh-multi-region-$(Get-Date -Format yyyyMMddHHmmss)"
@@ -100,8 +118,8 @@ jobs:
         shell: pwsh
         run: |
           az account set --subscription "$env:SUBSCRIPTION_ID"
-          $vaultName = "rsv-westeurope"
-          $vaultRg   = "rsv-rg-westeurope"
-          $policyName = "backup-policy-westeurope"
+          $vaultName = "rsv-$env:DEPLOYMENT_LOCATION"
+          $vaultRg   = "rsv-rg-$env:DEPLOYMENT_LOCATION"
+          $policyName = "backup-policy-$env:DEPLOYMENT_LOCATION"
           echo "Deploying remediation policy for tag $env:VM_TAG_NAME=$env:VM_TAG_VALUE"
           pwsh ./scripts/Deploy-AutoEnablePolicySubscription.ps1 -SubscriptionId "$env:SUBSCRIPTION_ID" -Location "$env:DEPLOYMENT_LOCATION" -VmTagName "$env:VM_TAG_NAME" -VmTagValue "$env:VM_TAG_VALUE" -BackupPolicyName $policyName -VaultName $vaultName -VaultResourceGroup $vaultRg -CreateVault:$false
