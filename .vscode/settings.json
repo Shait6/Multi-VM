@@ -1,0 +1,8 @@
+{
+  "yaml.schemaStore.enable": false,
+  "yaml.schemas": {
+    "./.vscode/schemas/azure-pipelines.permissive.schema.json": [
+      "azure-pipelines.yml"
+    ]
+  }
+}
