@@ -10,8 +10,6 @@ on:
         description: 'Enable Auto-Remediation (DeployIfNotExists)'
         required: false
         default: 'false'
-      DAILY_RETENTION: '14'
-      WEEKLY_RETENTION: '30'
       deploymentLocation:
         description: 'Subscription deployment metadata location'
         required: false
@@ -58,8 +56,8 @@ jobs:
       DEPLOYMENT_LOCATION: ${{ github.event.inputs.deploymentLocation }}
       WEEKLY_DAYS: ${{ github.event.inputs.weeklyBackupDaysOfWeek }}
       BACKUP_FREQUENCY: ${{ github.event.inputs.backupFrequency }}
-      DAILY_RETENTION: ${{ github.event.inputs.dailyRetentionDays }}
-      WEEKLY_RETENTION: ${{ github.event.inputs.weeklyRetentionDays }}
+      DAILY_RETENTION: '14'
+      WEEKLY_RETENTION: '30'
       VM_TAG_NAME: ${{ github.event.inputs.vmTagName }}
       VM_TAG_VALUE: ${{ github.event.inputs.vmTagValue }}
       BACKUP_TIME: ${{ github.event.inputs.backupScheduleTime }}
