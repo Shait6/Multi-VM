@@ -77,7 +77,6 @@ File-by-File Guide
 		- Modules: one RSV, one backup policy (Daily/Weekly/Both), one UAI, and RBAC (Backup Operator) per region.
 		- Parameters: schedule time(s), timezone, frequency, daily/weekly retention, Instant Restore retention, and optional Monthly/Yearly retention blocks.
 		- Outputs arrays of vault/policy/UAI identifiers.
-	- `main.parameters.json`: Example parameter file (not used by CI; pipelines build a parameter object dynamically).
 	- `azure-pipelines.yml`: Azure DevOps pipeline (build, deploy, outputs, optional remediation). Reads subscription from variable `$(subscriptionId)`.
 	- `azure-pipelines-audit.yml`: Optional pipeline to deploy an Audit‑only policy (no auto‑enable) using `scripts/Deploy-AuditPolicy.ps1`.
 	- `.github/workflows/github-action.yml`: GitHub workflow to deploy subscription‑scope Bicep and optional auto‑enable policy.
@@ -94,14 +93,9 @@ File-by-File Guide
 	- `autoEnablePolicy.rule.json`: Parameterized rule JSON consumed by the auto‑enable policy module.
 - Scripts (`scripts/`)
 	- `Deploy-AutoEnablePolicySubscription.ps1`: Deploys the DeployIfNotExists policy at subscription scope and starts remediation; uses UAI identity located in the region’s vault RG by convention unless overridden.
-		- Requires the Recovery Services Vault and its resource group to already exist (provisioned by `main.bicep`). The script no longer creates vaults or resource groups.
+		- Requires the Recovery Services Vault and its resource group to already exist (provisioned by `main.bicep`).
 	- `Deploy-AuditPolicy.ps1`: Deploys an Audit policy (management group scope).
-	- `Deploy-Backup.ps1`: Example helper to run a subscription deployment with parameters.
-	- `Enable-VMBackup.ps1`: Enables backup for a specific VM (manual tooling / examples).
-	- `Create-ResourceGroup.ps1`: Helper to create RGs (not needed by CI since Bicep creates RGs).
-	- `Wait-For-AadPrincipal.ps1`: Utility to wait for UAI/SP propagation before role assignment.
-	- `Set-DeploymentParameters.ps1`: Utility to generate parameter files (CI builds inline JSON instead).
-	- `Configure-VaultReplication.ps1`: Optional vault replication configuration.
+
 
 Troubleshooting
 - YAML errors in ADO: Ensure parameter blocks align; all list items start at the same column.
@@ -134,5 +128,4 @@ az deployment sub create --name test-deploy --location westeurope --template-fil
 
 Notes
 - The auto‑enable remediation uses a UAI on the policy assignment. The script derives the identity by convention: `/subscriptions/<sub>/resourceGroups/rsv-rg-<region>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-<region>`.
-- `main.parameters.json` is provided as a reference; CI builds a parameter JSON inline for each run.
 - The `Deploy-AutoEnablePolicySubscription.ps1` script no longer includes any path to create resource groups or vaults. Run the main deployment first so `rsv-rg-<region>` and `rsv-<region>` exist.
