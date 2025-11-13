@@ -211,6 +211,6 @@ stages:
             $vaultRg = "rsv-rg-$r"
             $policyName = "backup-policy-$r"
             Write-Host "Deploying auto-enable policy: region=$r vault=$vaultName policy=$policyName tag=${{ parameters.vmTagName }}=${{ parameters.vmTagValue }}"
-            pwsh ./scripts/Deploy-AutoEnablePolicySubscription.ps1 -SubscriptionId $subscriptionId -Location $r -VmTagName '${{ parameters.vmTagName }}' -VmTagValue '${{ parameters.vmTagValue }}' -BackupPolicyName $policyName -VaultName $vaultName -VaultResourceGroup $vaultRg -CreateVault:$false
+            pwsh ./scripts/Deploy-AutoEnablePolicySubscription.ps1 -SubscriptionId $subscriptionId -Location $r -VmTagName '${{ parameters.vmTagName }}' -VmTagValue '${{ parameters.vmTagValue }}' -BackupPolicyName $policyName -VaultName $vaultName -VaultResourceGroup $vaultRg
           }
         azurePowerShellVersion: 'LatestVersion'

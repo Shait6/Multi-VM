@@ -14,15 +14,12 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$BackupPolicyName,
 
-    [Parameter(Mandatory=$false)]
+  [Parameter(Mandatory=$true)]
     [string]$VaultName = '',
 
-    [Parameter(Mandatory=$false)]
+  [Parameter(Mandatory=$true)]
     [string]$VaultResourceGroup = '',
 
-    [Parameter(Mandatory=$false)]
-    [bool]$CreateVault = $false
-    ,
     [Parameter(Mandatory=$false)]
     [string]$AssignmentIdentityResourceId
 )
@@ -30,40 +27,14 @@ param(
 try {
     Select-AzSubscription -SubscriptionId $SubscriptionId
 
-    if ($CreateVault) {
-        if ([string]::IsNullOrEmpty($VaultName) -or [string]::IsNullOrEmpty($VaultResourceGroup)) {
-            Write-Error "When CreateVault is true, VaultName and VaultResourceGroup must be provided."
-            exit 1
-        }
-
-        Write-Host "Ensuring resource group '$VaultResourceGroup' exists in subscription $SubscriptionId"
-        $rg = Get-AzResourceGroup -Name $VaultResourceGroup -ErrorAction SilentlyContinue
-        if (-not $rg) { New-AzResourceGroup -Name $VaultResourceGroup -Location $Location | Out-Null }
-
-        Write-Host "Creating Recovery Services Vault '$VaultName' in resource group '$VaultResourceGroup'"
-        $vaultTemplate = @"
-{
-  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-  "contentVersion": "1.0.0.0",
-  "resources": [
-    {
-      "type": "Microsoft.RecoveryServices/vaults",
-      "apiVersion": "2025-02-01",
-      "name": "${VaultName}",
-      "location": "${Location}",
-      "properties": {
-        "publicNetworkAccess": "Enabled"
-      },
-      "sku": {
-        "name": "RS0",
-        "tier": "Standard"
-      }
+    # Validate prerequisites: vault resource group and vault must already exist
+    $rg = Get-AzResourceGroup -Name $VaultResourceGroup -ErrorAction SilentlyContinue
+    if (-not $rg) {
+        throw "Vault resource group '$VaultResourceGroup' not found in subscription $SubscriptionId. Deploy the vault via main.bicep first."
     }
-  ]
-}
-"@
-
-        New-AzResourceGroupDeployment -ResourceGroupName $VaultResourceGroup -TemplateParameterObject @{ } -TemplateFile ([System.IO.Path]::GetTempFileName()) -TemplateParameterFile $null -TemplateObject (ConvertFrom-Json $vaultTemplate) -Mode Incremental | Out-Null
+    $vault = Get-AzResource -ResourceGroupName $VaultResourceGroup -ResourceType "Microsoft.RecoveryServices/vaults" -Name $VaultName -ErrorAction SilentlyContinue
+    if (-not $vault) {
+        throw "Recovery Services Vault '$VaultName' not found in resource group '$VaultResourceGroup'. Deploy the vault via main.bicep first."
     }
 
     Write-Host "Deploying subscription-scoped DeployIfNotExists policy"

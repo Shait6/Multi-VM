@@ -6,7 +6,7 @@ Overview
 - Automates RBAC and an optional DeployIfNotExists policy that protects tagged VMs, including remediation for existing VMs.
 - Delivered as subscription‑scope Bicep with CI/CD for GitHub Actions and Azure DevOps.
 
-Architecture (What gets created)
+Architecture
 - Four resource groups (one per region): `westeurope`, `northeurope`, `swedencentral`, `germanywestcentral`.
 - One RSV per region; cross‑region restore and resilience settings applied (configurable via vault SKU and public network access).
 - One backup policy per region with configurable frequency (`Daily` / `Weekly` / `Both`), schedule time + timezone, Instant Restore retention, and retention tiers:
@@ -52,7 +52,7 @@ Prerequisites
 - GitHub Actions
 	- Secret `AZURE_CREDENTIALS` containing Service Principal JSON for `azure/login@v2` (or OIDC setup with `clientId`, `tenantId`, `subscriptionId`).
 - Azure DevOps
-	- Service connection named `bicep_deploy_SC` with access to the target subscription.
+	- Service connection with access to the target subscription.
 	- Define pipeline variable `subscriptionId` with your subscription GUID (Pipelines → Edit → Variables).
 	- Hosted agent `windows-latest` (pipeline installs Bicep if missing).
 
@@ -94,6 +94,7 @@ File-by-File Guide
 	- `autoEnablePolicy.rule.json`: Parameterized rule JSON consumed by the auto‑enable policy module.
 - Scripts (`scripts/`)
 	- `Deploy-AutoEnablePolicySubscription.ps1`: Deploys the DeployIfNotExists policy at subscription scope and starts remediation; uses UAI identity located in the region’s vault RG by convention unless overridden.
+		- Requires the Recovery Services Vault and its resource group to already exist (provisioned by `main.bicep`). The script no longer creates vaults or resource groups.
 	- `Deploy-AuditPolicy.ps1`: Deploys an Audit policy (management group scope).
 	- `Deploy-Backup.ps1`: Example helper to run a subscription deployment with parameters.
 	- `Enable-VMBackup.ps1`: Enables backup for a specific VM (manual tooling / examples).
@@ -134,3 +135,4 @@ az deployment sub create --name test-deploy --location westeurope --template-fil
 Notes
 - The auto‑enable remediation uses a UAI on the policy assignment. The script derives the identity by convention: `/subscriptions/<sub>/resourceGroups/rsv-rg-<region>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-<region>`.
 - `main.parameters.json` is provided as a reference; CI builds a parameter JSON inline for each run.
+- The `Deploy-AutoEnablePolicySubscription.ps1` script no longer includes any path to create resource groups or vaults. Run the main deployment first so `rsv-rg-<region>` and `rsv-<region>` exist.
