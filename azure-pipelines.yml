@@ -1,7 +1,4 @@
 parameters:
-- name: subscriptionId
-  type: string
-  default: ''
 - name: deploymentLocation
   type: string
   values:
@@ -74,48 +71,48 @@ parameters:
   type: number
   default: 2
   displayName: 'Instant Restore retention (days)'
- - name: enableMonthlyRetention
-   type: string
-   values:
-     - 'true'
-     - 'false'
-   default: 'false'
-   displayName: 'Enable Monthly Retention (Weekly policy)'
- - name: monthlyRetentionMonths
-   type: number
-   default: 60
-   displayName: 'Monthly Retention Months'
- - name: monthlyWeeksOfMonth
-   type: string
-   default: 'First'
-   displayName: "Monthly Weeks (e.g. 'First,Last')"
- - name: monthlyDaysOfWeek
-   type: string
-   default: 'Sunday'
-   displayName: "Monthly Days (e.g. 'Sunday,Wednesday')"
- - name: enableYearlyRetention
-   type: string
-   values:
-     - 'true'
-     - 'false'
-   default: 'false'
-   displayName: 'Enable Yearly Retention (Weekly policy)'
- - name: yearlyRetentionYears
-   type: number
-   default: 10
-   displayName: 'Yearly Retention Years'
- - name: yearlyMonthsOfYear
-   type: string
-   default: 'January,February,March'
-   displayName: "Yearly Months (e.g. 'January,February,March')"
- - name: yearlyWeeksOfMonth
-   type: string
-   default: 'First'
-   displayName: "Yearly Weeks (e.g. 'First')"
- - name: yearlyDaysOfWeek
-   type: string
-   default: 'Sunday'
-   displayName: "Yearly Days (e.g. 'Sunday')"
+- name: enableMonthlyRetention
+  type: string
+  values:
+   - 'true'
+   - 'false'
+  default: 'false'
+  displayName: 'Enable Monthly Retention (Weekly policy)'
+- name: monthlyRetentionMonths
+  type: number
+  default: 60
+  displayName: 'Monthly Retention Months'
+- name: monthlyWeeksOfMonth
+  type: string
+  default: 'First'
+  displayName: "Monthly Weeks (e.g. 'First,Last')"
+- name: monthlyDaysOfWeek
+  type: string
+  default: 'Sunday'
+  displayName: "Monthly Days (e.g. 'Sunday,Wednesday')"
+- name: enableYearlyRetention
+  type: string
+  values:
+   - 'true'
+   - 'false'
+  default: 'false'
+  displayName: 'Enable Yearly Retention (Weekly policy)'
+- name: yearlyRetentionYears
+  type: number
+  default: 10
+  displayName: 'Yearly Retention Years'
+- name: yearlyMonthsOfYear
+  type: string
+  default: 'January,February,March'
+  displayName: "Yearly Months (e.g. 'January,February,March')"
+- name: yearlyWeeksOfMonth
+  type: string
+  default: 'First'
+  displayName: "Yearly Weeks (e.g. 'First')"
+- name: yearlyDaysOfWeek
+  type: string
+  default: 'Sunday'
+  displayName: "Yearly Days (e.g. 'Sunday')"
   
 pool:
   vmImage: 'windows-latest'
@@ -142,10 +139,10 @@ stages:
         scriptType: 'ps'
         scriptLocation: 'inlineScript'
         inlineScript: |
-          if (-not [string]::IsNullOrWhiteSpace("${{ parameters.subscriptionId }}")) {
-            az account set --subscription "${{ parameters.subscriptionId }}"
+          if (-not [string]::IsNullOrWhiteSpace("$(subscriptionId)")) {
+            az account set --subscription "$(subscriptionId)"
           } else {
-            Write-Host "No subscriptionId parameter provided; using service connection's default context."
+            Write-Host "No subscriptionId variable set; using service connection's default context."
           }
           $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
           $weeklyDays = "${{ parameters.weeklyBackupDaysOfWeekString }}".Split(',') | ForEach-Object { $_.Trim() }
@@ -200,11 +197,11 @@ stages:
         azureSubscription: 'bicep_deploy_SC'
         ScriptType: 'InlineScript'
         Inline: |
-          $subscriptionId = '${{ parameters.subscriptionId }}'
+          $subscriptionId = "$(subscriptionId)"
           if (-not [string]::IsNullOrWhiteSpace($subscriptionId)) {
             Select-AzSubscription -SubscriptionId $subscriptionId
           } else {
-            Write-Host "No subscriptionId parameter provided; relying on service connection context."
+            Write-Host "No subscriptionId variable set; relying on service connection context."
           }
           $allRegions = @('westeurope','northeurope','swedencentral','germanywestcentral')
           $multi = ('${{ parameters.multiRegionAutoRemediation }}' -eq 'true')
