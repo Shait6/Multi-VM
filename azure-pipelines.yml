@@ -71,6 +71,10 @@ parameters:
   type: number
   default: 2
   displayName: 'Instant Restore retention (days)'
+- name: waitMinutesBeforeRemediation
+  type: number
+  default: 5
+  displayName: 'Wait minutes before remediation (buffer after deploy)'
 - name: enableMonthlyRetention
   type: string
   values:
@@ -185,4 +189,63 @@ stages:
           Write-Host "UAIs:" ($outputs.userAssignedIdentityIds.value -join ', ')
           Write-Host "Principals:" ($outputs.userAssignedIdentityPrincipalIds.value -join ', ')
           Write-Host "Outputs saved -> deployment-outputs.json"
+
+- stage: Remediate
+  displayName: 'Auto-enable policy remediation'
+  condition: and(succeeded(), eq('${{ parameters.enableAutoRemediation }}','true'))
+  dependsOn: Deploy
+  jobs:
+  - job: RemediateTaggedVMs
+    displayName: 'Assign policy and start remediation'
+    steps:
+    - task: AzureCLI@2
+      displayName: 'Run remediation for target regions'
+      inputs:
+        azureSubscription: 'bicep_deploy_SC'
+        scriptType: 'ps'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          $subscriptionId = "$(subscriptionId)"
+          if (-not [string]::IsNullOrWhiteSpace($subscriptionId)) {
+            az account set --subscription $subscriptionId
+          } else {
+            Write-Host "No subscriptionId variable set; using service connection's default context."
+          }
+
+          $wait = [int]${{ parameters.waitMinutesBeforeRemediation }}
+          if ($wait -gt 0) { Write-Host "Waiting $wait minute(s) before remediation..."; Start-Sleep -Seconds ($wait * 60) }
+
+          $allRegions = @('westeurope','northeurope','swedencentral','germanywestcentral')
+          $multi = ('${{ parameters.multiRegionAutoRemediation }}' -eq 'true')
+          $targetRegions = if ($multi) { $allRegions } else { @('${{ parameters.policyBaselineRegion }}') }
+          foreach ($r in $targetRegions) {
+            $vaultName = "rsv-$r"
+            $vaultRg   = "rsv-rg-$r"
+            $policyName = "backup-policy-$r"
+            $uaiId = "/subscriptions/$subscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
+
+            Write-Host "Deploying policy assignment: region=$r vault=$vaultName policy=$policyName tag=${{ parameters.vmTagName }}=${{ parameters.vmTagValue }}"
+            az deployment sub create `
+              --name "remediate-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" `
+              --location $r `
+              --template-file modules/backupAutoEnablePolicy.bicep `
+              --parameters `
+                assignmentLocation=$r `
+                assignmentIdentityId=$uaiId `
+                vmTagName='${{ parameters.vmTagName }}' `
+                vmTagValue='${{ parameters.vmTagValue }}' `
+                vaultName=$vaultName `
+                vaultResourceGroup=$vaultRg `
+                backupPolicyName=$policyName `
+              -o none
+
+            $assign = az policy assignment show -n enable-vm-backup-assignment -o json | ConvertFrom-Json
+            if ($null -ne $assign) {
+              $remName = "remediate-vm-backup-$r"
+              Write-Host "Starting remediation: $remName"
+              az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ExistingNonCompliant -o none
+            } else {
+              Write-Warning "Policy assignment not found after deployment in region $r"
+            }
+          }
 

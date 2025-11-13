@@ -48,6 +48,10 @@ on:
         description: 'Instant restore retention (days)'
         required: false
         default: '2'
+      waitMinutesBeforeRemediation:
+        description: 'Wait minutes before remediation (buffer after deploy)'
+        required: false
+        default: '5'
       enableMonthlyRetention:
         description: 'Enable monthly retention (Weekly policy only)'
         required: false
@@ -170,4 +174,61 @@ jobs:
           echo "Policies: $($outputs.backupPolicyNames.value -join ', ')"
           echo "UAIs: $($outputs.userAssignedIdentityIds.value -join ', ')"
           echo "Principals: $($outputs.userAssignedIdentityPrincipalIds.value -join ', ')"
+
+  remediate:
+    if: ${{ github.event.inputs.enableAutoRemediation == 'true' }}
+    needs: deploy
+    runs-on: windows-latest
+    env:
+      SUBSCRIPTION_ID: ${{ github.event.inputs.subscriptionId }}
+      DEPLOYMENT_LOCATION: ${{ github.event.inputs.deploymentLocation }}
+      VM_TAG_NAME: ${{ github.event.inputs.vmTagName }}
+      VM_TAG_VALUE: ${{ github.event.inputs.vmTagValue }}
+      WAIT_MINUTES: ${{ github.event.inputs.waitMinutesBeforeRemediation }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Remediate tagged VMs (baseline region)
+        shell: pwsh
+        run: |
+          az account set --subscription "$env:SUBSCRIPTION_ID"
+
+          $wait = [int]$env:WAIT_MINUTES
+          if ($wait -gt 0) { Write-Host "Waiting $wait minute(s) before remediation..."; Start-Sleep -Seconds ($wait * 60) }
+
+          $r = $env:DEPLOYMENT_LOCATION
+          $vaultName = "rsv-$r"
+          $vaultRg   = "rsv-rg-$r"
+          $policyName = "backup-policy-$r"
+          $uaiId = "/subscriptions/$env:SUBSCRIPTION_ID/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
+
+          echo "Deploying policy assignment for region=$r vault=$vaultName policy=$policyName"
+          az deployment sub create `
+            --name "remediate-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" `
+            --location $r `
+            --template-file modules/backupAutoEnablePolicy.bicep `
+            --parameters `
+              assignmentLocation=$r `
+              assignmentIdentityId=$uaiId `
+              vmTagName=$env:VM_TAG_NAME `
+              vmTagValue=$env:VM_TAG_VALUE `
+              vaultName=$vaultName `
+              vaultResourceGroup=$vaultRg `
+              backupPolicyName=$policyName `
+            -o none
+
+          $assign = az policy assignment show -n enable-vm-backup-assignment -o json | ConvertFrom-Json
+          if ($null -ne $assign) {
+            $remName = "remediate-vm-backup-$r"
+            echo "Starting remediation: $remName"
+            az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ExistingNonCompliant -o none
+          } else {
+            echo "Warning: Policy assignment not found after deployment in region $r"
+          }
           

@@ -30,6 +30,7 @@ CI/CD Workflows
 - Azure DevOps: `azure-pipelines.yml`
 	- Builds Bicep; deploys subscription scope with parameters; captures outputs; optional auto‑enable policy remediation across baseline or all regions.
 	- Uses a UI pipeline variable `subscriptionId` (not a YAML parameter) for the Azure subscription.
+  - Contains a dedicated remediation stage that runs after deploy when enabled, with an optional buffer wait.
 
 Parameters and Inputs
 - Common policy inputs (surfaced to both CI systems):
