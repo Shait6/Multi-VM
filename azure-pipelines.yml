@@ -142,7 +142,11 @@ stages:
         scriptType: 'ps'
         scriptLocation: 'inlineScript'
         inlineScript: |
-          az account set --subscription "${{ parameters.subscriptionId }}"
+          if (-not [string]::IsNullOrWhiteSpace("${{ parameters.subscriptionId }}")) {
+            az account set --subscription "${{ parameters.subscriptionId }}"
+          } else {
+            Write-Host "No subscriptionId parameter provided; using service connection's default context."
+          }
           $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
           $weeklyDays = "${{ parameters.weeklyBackupDaysOfWeekString }}".Split(',') | ForEach-Object { $_.Trim() }
           $runTimes = @("${{ parameters.backupScheduleTimeString }}")
@@ -197,7 +201,11 @@ stages:
         ScriptType: 'InlineScript'
         Inline: |
           $subscriptionId = '${{ parameters.subscriptionId }}'
-          Select-AzSubscription -SubscriptionId $subscriptionId
+          if (-not [string]::IsNullOrWhiteSpace($subscriptionId)) {
+            Select-AzSubscription -SubscriptionId $subscriptionId
+          } else {
+            Write-Host "No subscriptionId parameter provided; relying on service connection context."
+          }
           $allRegions = @('westeurope','northeurope','swedencentral','germanywestcentral')
           $multi = ('${{ parameters.multiRegionAutoRemediation }}' -eq 'true')
           $targetRegions = if ($multi) { $allRegions } else { @('${{ parameters.policyBaselineRegion }}') }
