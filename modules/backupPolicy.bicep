@@ -24,16 +24,109 @@ param dailyRetentionDays int = 14
 @description('Retention in days for weekly backups')
 param weeklyRetentionDays int = 30
 
-@description('Time zone for backup scheduling (e.g., "UTC")')
-param backupTimeZone string = 'UTC'
 
 @description('Instant Restore snapshot retention in days')
 param instantRestoreRetentionDays int = 2
+
+@description('Enable additional monthly retention tier (for weekly policy)')
+param enableMonthlyRetention bool = false
+
+@description('Monthly retention duration in months')
+param monthlyRetentionMonths int = 60
+
+@description('Monthly retention schedule format type')
+@allowed([
+  'Weekly'
+])
+param monthlyRetentionScheduleFormat string = 'Weekly'
+
+@description('Monthly retention weeks of the month')
+@allowed([
+  'First'
+  'Second'
+  'Third'
+  'Fourth'
+  'Last'
+])
+param monthlyWeeksOfMonth array = [ 'First' ]
+
+@description('Monthly retention days of the week')
+@allowed([
+  'Sunday'
+  'Monday'
+  'Tuesday'
+  'Wednesday'
+  'Thursday'
+  'Friday'
+  'Saturday'
+])
+param monthlyDaysOfWeek array = [ 'Sunday' ]
+
+@description('Enable additional yearly retention tier (for weekly policy)')
+param enableYearlyRetention bool = false
+
+@description('Yearly retention duration in years')
+param yearlyRetentionYears int = 10
+
+@description('Yearly retention schedule format type')
+@allowed([
+  'Weekly'
+])
+param yearlyRetentionScheduleFormat string = 'Weekly'
+
+@description('Yearly retention months of year')
+@allowed([
+  'January'
+  'February'
+  'March'
+  'April'
+  'May'
+  'June'
+  'July'
+  'August'
+  'September'
+  'October'
+  'November'
+  'December'
+])
+param yearlyMonthsOfYear array = [ 'January', 'February', 'March' ]
+
+@description('Yearly retention weeks of the month')
+@allowed([
+  'First'
+  'Second'
+  'Third'
+  'Fourth'
+  'Last'
+])
+param yearlyWeeksOfMonth array = [ 'First' ]
+
+@description('Yearly retention days of the week')
+@allowed([
+  'Sunday'
+  'Monday'
+  'Tuesday'
+  'Wednesday'
+  'Thursday'
+  'Friday'
+  'Saturday'
+])
+param yearlyDaysOfWeek array = [ 'Sunday' ]
 
 // Reference existing vault as parent
 resource existingVault 'Microsoft.RecoveryServices/vaults@2025-02-01' existing = {
   name: vaultName
 }
+
+@description('Time zone for backup scheduling (e.g., "UTC")')
+param backupTimeZone string = 'UTC'
+
+// Convert simple HH:mm entries to ISO8601 with Z (UTC) as per accepted shape
+// Date component is ignored by the service
+var isoRunTimes = [for t in backupScheduleRunTimes: '2020-01-01T${t}:00Z']
+
+// Weekly retention must be specified in Weeks; convert provided days to weeks (rounding up)
+var weeklyRetentionWeeks = int((weeklyRetentionDays + 6) / 7)
 
 // Create daily policy when requested (or when 'Both' selected)
 resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@2023-04-01' = if (backupFrequency == 'Daily' || backupFrequency == 'Both') {
@@ -41,48 +134,87 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
   name: backupFrequency == 'Both' ? '${backupPolicyName}-daily' : backupPolicyName
   properties: {
     backupManagementType: 'AzureIaasVM'
+    policyType: 'V1'
     instantRpRetentionRangeInDays: instantRestoreRetentionDays
     schedulePolicy: {
       schedulePolicyType: 'SimpleSchedulePolicy'
       scheduleRunFrequency: 'Daily'
-      // Do NOT set scheduleRunDays to null. Use an array (empty array is acceptable) or omit the property.
-      scheduleRunTimes: backupScheduleRunTimes
+      scheduleRunTimes: isoRunTimes
     }
     retentionPolicy: {
       retentionPolicyType: 'LongTermRetentionPolicy'
       dailySchedule: {
-        retentionTimes: backupScheduleRunTimes
+        retentionTimes: isoRunTimes
         retentionDuration: {
           count: dailyRetentionDays
           durationType: 'Days'
         }
       }
+      monthlySchedule: null
+      weeklySchedule: null
+      yearlySchedule: null
     }
     timeZone: backupTimeZone
   }
 }
 
 // Create weekly policy when requested (or when 'Both' selected)
-resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@2023-04-01' = if (backupFrequency == 'Weekly' || backupFrequency == 'Both') {
+resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@2025-02-01' = if (backupFrequency == 'Weekly' || backupFrequency == 'Both') {
   parent: existingVault
   name: backupFrequency == 'Both' ? '${backupPolicyName}-weekly' : backupPolicyName
   properties: {
     backupManagementType: 'AzureIaasVM'
+    policyType: 'V1'
+    instantRPDetails: {}
     instantRpRetentionRangeInDays: instantRestoreRetentionDays
     schedulePolicy: {
       schedulePolicyType: 'SimpleSchedulePolicy'
       scheduleRunFrequency: 'Weekly'
-      scheduleRunTimes: backupScheduleRunTimes
       scheduleRunDays: weeklyBackupDaysOfWeek
+      scheduleRunTimes: isoRunTimes
+      scheduleWeeklyFrequency: 0
     }
     retentionPolicy: {
       retentionPolicyType: 'LongTermRetentionPolicy'
       weeklySchedule: {
-        retentionTimes: backupScheduleRunTimes
+        daysOfTheWeek: weeklyBackupDaysOfWeek
+        retentionTimes: isoRunTimes
         retentionDuration: {
-          count: weeklyRetentionDays
-          durationType: 'Days'
+          count: weeklyRetentionWeeks
+          durationType: 'Weeks'
         }
+      }
+      monthlySchedule: enableMonthlyRetention ? {
+        retentionScheduleFormatType: monthlyRetentionScheduleFormat
+        retentionScheduleWeekly: {
+          daysOfTheWeek: monthlyDaysOfWeek
+          weeksOfTheMonth: monthlyWeeksOfMonth
+        }
+        retentionTimes: isoRunTimes
+        retentionDuration: {
+          count: monthlyRetentionMonths
+          durationType: 'Months'
+        }
+      } : null
+      yearlySchedule: enableYearlyRetention ? {
+        retentionScheduleFormatType: yearlyRetentionScheduleFormat
+        monthsOfYear: yearlyMonthsOfYear
+        retentionScheduleWeekly: {
+          daysOfTheWeek: yearlyDaysOfWeek
+          weeksOfTheMonth: yearlyWeeksOfMonth
+        }
+        retentionTimes: isoRunTimes
+        retentionDuration: {
+          count: yearlyRetentionYears
+          durationType: 'Years'
+        }
+      } : null
+    }
+    tieringPolicy: {
+      ArchivedRP: {
+        tieringMode: 'DoNotTier'
+        duration: 0
+        durationType: 'Invalid'
       }
     }
     timeZone: backupTimeZone

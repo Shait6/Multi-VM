@@ -31,6 +31,24 @@ param backupFrequency string = 'Daily'
 param backupTimeZone string = 'UTC'
 @description('Instant Restore snapshot retention in days')
 param instantRestoreRetentionDays int = 2
+@description('Enable additional monthly retention tier (for weekly policy)')
+param enableMonthlyRetention bool = false
+@description('Monthly retention duration in months')
+param monthlyRetentionMonths int = 60
+@description('Monthly retention weeks of the month')
+param monthlyWeeksOfMonth array = [ 'First' ]
+@description('Monthly retention days of the week')
+param monthlyDaysOfWeek array = [ 'Sunday' ]
+@description('Enable additional yearly retention tier (for weekly policy)')
+param enableYearlyRetention bool = false
+@description('Yearly retention duration in years')
+param yearlyRetentionYears int = 10
+@description('Yearly retention months of year')
+param yearlyMonthsOfYear array = [ 'January', 'February', 'March' ]
+@description('Yearly retention weeks of the month')
+param yearlyWeeksOfMonth array = [ 'First' ]
+@description('Yearly retention days of the week')
+param yearlyDaysOfWeek array = [ 'Sunday' ]
 @allowed([ 'Enabled', 'Disabled' ])
 @description('Public network access setting for vaults')
 param publicNetworkAccess string = 'Enabled'
@@ -72,6 +90,15 @@ module policies './modules/backupPolicy.bicep' = [for (region, i) in regions: {
     weeklyRetentionDays: weeklyRetentionDays
     backupTimeZone: backupTimeZone
     instantRestoreRetentionDays: instantRestoreRetentionDays
+    enableMonthlyRetention: enableMonthlyRetention
+    monthlyRetentionMonths: monthlyRetentionMonths
+    monthlyWeeksOfMonth: monthlyWeeksOfMonth
+    monthlyDaysOfWeek: monthlyDaysOfWeek
+    enableYearlyRetention: enableYearlyRetention
+    yearlyRetentionYears: yearlyRetentionYears
+    yearlyMonthsOfYear: yearlyMonthsOfYear
+    yearlyWeeksOfMonth: yearlyWeeksOfMonth
+    yearlyDaysOfWeek: yearlyDaysOfWeek
   }
   dependsOn: [vaults[i]]
 }]

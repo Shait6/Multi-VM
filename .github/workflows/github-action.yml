@@ -48,6 +48,46 @@ on:
         description: 'Instant restore retention (days)'
         required: false
         default: '2'
+      enableMonthlyRetention:
+        description: 'Enable monthly retention (Weekly policy only)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true','false']
+      monthlyRetentionMonths:
+        description: 'Monthly retention (months)'
+        required: false
+        default: '60'
+      monthlyWeeksOfMonth:
+        description: "Monthly weeks (e.g. 'First' or 'First,Last')"
+        required: false
+        default: 'First'
+      monthlyDaysOfWeek:
+        description: "Monthly days (e.g. 'Sunday' or 'Sunday,Wednesday')"
+        required: false
+        default: 'Sunday'
+      enableYearlyRetention:
+        description: 'Enable yearly retention (Weekly policy only)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true','false']
+      yearlyRetentionYears:
+        description: 'Yearly retention (years)'
+        required: false
+        default: '10'
+      yearlyMonthsOfYear:
+        description: "Yearly months (e.g. 'January,February,March')"
+        required: false
+        default: 'January,February,March'
+      yearlyWeeksOfMonth:
+        description: "Yearly weeks (e.g. 'First')"
+        required: false
+        default: 'First'
+      yearlyDaysOfWeek:
+        description: "Yearly days (e.g. 'Sunday')"
+        required: false
+        default: 'Sunday'
       vmTagName:
         description: 'Tag name used to select VMs for remediation'
         required: false
@@ -73,6 +113,15 @@ jobs:
       BACKUP_TIME: ${{ github.event.inputs.backupScheduleTime }}
       BACKUP_TZ: ${{ github.event.inputs.backupTimeZone }}
       INSTANT_RESTORE_DAYS: ${{ github.event.inputs.instantRestoreRetentionDays }}
+      ENABLE_MONTHLY: ${{ github.event.inputs.enableMonthlyRetention }}
+      MONTHLY_MONTHS: ${{ github.event.inputs.monthlyRetentionMonths }}
+      MONTHLY_WEEKS: ${{ github.event.inputs.monthlyWeeksOfMonth }}
+      MONTHLY_DAYS: ${{ github.event.inputs.monthlyDaysOfWeek }}
+      ENABLE_YEARLY: ${{ github.event.inputs.enableYearlyRetention }}
+      YEARLY_YEARS: ${{ github.event.inputs.yearlyRetentionYears }}
+      YEARLY_MONTHS: ${{ github.event.inputs.yearlyMonthsOfYear }}
+      YEARLY_WEEKS: ${{ github.event.inputs.yearlyWeeksOfMonth }}
+      YEARLY_DAYS: ${{ github.event.inputs.yearlyDaysOfWeek }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -101,6 +150,15 @@ jobs:
             backupScheduleRunTimes = @{ value = @($env:BACKUP_TIME) }
             backupTimeZone         = @{ value = $env:BACKUP_TZ }
             instantRestoreRetentionDays = @{ value = [int]$env:INSTANT_RESTORE_DAYS }
+            enableMonthlyRetention = @{ value = ($env:ENABLE_MONTHLY -eq 'true') }
+            monthlyRetentionMonths = @{ value = [int]$env:MONTHLY_MONTHS }
+            monthlyWeeksOfMonth    = @{ value = ($env:MONTHLY_WEEKS.Split(',') | ForEach-Object { $_.Trim() }) }
+            monthlyDaysOfWeek      = @{ value = ($env:MONTHLY_DAYS.Split(',') | ForEach-Object { $_.Trim() }) }
+            enableYearlyRetention  = @{ value = ($env:ENABLE_YEARLY -eq 'true') }
+            yearlyRetentionYears   = @{ value = [int]$env:YEARLY_YEARS }
+            yearlyMonthsOfYear     = @{ value = ($env:YEARLY_MONTHS.Split(',') | ForEach-Object { $_.Trim() }) }
+            yearlyWeeksOfMonth     = @{ value = ($env:YEARLY_WEEKS.Split(',') | ForEach-Object { $_.Trim() }) }
+            yearlyDaysOfWeek       = @{ value = ($env:YEARLY_DAYS.Split(',') | ForEach-Object { $_.Trim() }) }
           }
           $paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8
           $deployName = "gh-multi-region-$(Get-Date -Format yyyyMMddHHmmss)"
