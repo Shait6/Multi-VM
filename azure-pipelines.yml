@@ -186,31 +186,3 @@ stages:
           Write-Host "Principals:" ($outputs.userAssignedIdentityPrincipalIds.value -join ', ')
           Write-Host "Outputs saved -> deployment-outputs.json"
 
-  - job: DeployAutoEnablePolicy
-    displayName: 'Deploy auto-enable policy'
-    condition: eq('${{ parameters.enableAutoRemediation }}','true')
-    dependsOn: BuildAndDeployMultiRegion
-    steps:
-    - task: AzurePowerShell@5
-      displayName: 'Remediate tagged VMs'
-      inputs:
-        azureSubscription: 'bicep_deploy_SC'
-        ScriptType: 'InlineScript'
-        Inline: |
-          $subscriptionId = "$(subscriptionId)"
-          if (-not [string]::IsNullOrWhiteSpace($subscriptionId)) {
-            Select-AzSubscription -SubscriptionId $subscriptionId
-          } else {
-            Write-Host "No subscriptionId variable set; relying on service connection context."
-          }
-          $allRegions = @('westeurope','northeurope','swedencentral','germanywestcentral')
-          $multi = ('${{ parameters.multiRegionAutoRemediation }}' -eq 'true')
-          $targetRegions = if ($multi) { $allRegions } else { @('${{ parameters.policyBaselineRegion }}') }
-          foreach ($r in $targetRegions) {
-            $vaultName = "rsv-$r"
-            $vaultRg = "rsv-rg-$r"
-            $policyName = "backup-policy-$r"
-            Write-Host "Deploying auto-enable policy: region=$r vault=$vaultName policy=$policyName tag=${{ parameters.vmTagName }}=${{ parameters.vmTagValue }}"
-            pwsh ./scripts/Deploy-AutoEnablePolicySubscription.ps1 -SubscriptionId $subscriptionId -Location $r -VmTagName '${{ parameters.vmTagName }}' -VmTagValue '${{ parameters.vmTagValue }}' -BackupPolicyName $policyName -VaultName $vaultName -VaultResourceGroup $vaultRg
-          }
-        azurePowerShellVersion: 'LatestVersion'

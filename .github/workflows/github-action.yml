@@ -170,14 +170,4 @@ jobs:
           echo "Policies: $($outputs.backupPolicyNames.value -join ', ')"
           echo "UAIs: $($outputs.userAssignedIdentityIds.value -join ', ')"
           echo "Principals: $($outputs.userAssignedIdentityPrincipalIds.value -join ', ')"
-
-      - name: Deploy auto-enable policy (DeployIfNotExists)
-        if: ${{ env.ENABLE_AUTO_REMEDIATION == 'true' }}
-        shell: pwsh
-        run: |
-          az account set --subscription "$env:SUBSCRIPTION_ID"
-          $vaultName = "rsv-$env:DEPLOYMENT_LOCATION"
-          $vaultRg   = "rsv-rg-$env:DEPLOYMENT_LOCATION"
-          $policyName = "backup-policy-$env:DEPLOYMENT_LOCATION"
-          echo "Deploying remediation policy for tag $env:VM_TAG_NAME=$env:VM_TAG_VALUE"
-          pwsh ./scripts/Deploy-AutoEnablePolicySubscription.ps1 -SubscriptionId "$env:SUBSCRIPTION_ID" -Location "$env:DEPLOYMENT_LOCATION" -VmTagName "$env:VM_TAG_NAME" -VmTagValue "$env:VM_TAG_VALUE" -BackupPolicyName $policyName -VaultName $vaultName -VaultResourceGroup $vaultRg -CreateVault:$false
+          
