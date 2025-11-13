@@ -1,80 +1,92 @@
-@description('Location for all resources')
-param location string
-param vaultName string
-param backupPolicyName string
-param backupScheduleRunTimes array = [
-  // Use time-of-day strings (HH:mm) for policy schedule times. Avoid full ISO datetimes which the
-  // Recovery Services policy API may reject. Example: '01:00'
-  '01:00'
-]
-@description('Retention in days for daily backups')
-param dailyRetentionDays int = 14
-@description('Retention in days for weekly backups')
-param weeklyRetentionDays int = 30
-param weeklyBackupDaysOfWeek array = [
-  'Sunday'
-  'Wednesday'
+targetScope = 'subscription'
+
+// List of regions to deploy to
+var regions = [
+  'westeurope'
+  'northeurope'
+  'swedencentral'
+  'germanywestcentral'
 ]
 
-@allowed([
-  'Daily'
-  'Weekly'
-  'Both'
-])
-@description('Backup frequency - choose Daily, Weekly or Both')
-param backupFrequency string = 'Daily'
+// Resource group name pattern
+var rgNames = [for region in regions: 'rsv-rg-${region}']
 
-@allowed([
-  'Enabled'
-  'Disabled'
-])
-param publicNetworkAccess string = 'Enabled'
-@description('Recovery Services Vault SKU name (e.g. RS0)')
-param vaultSkuName string = 'RS0'
-@description('Recovery Services Vault SKU tier (e.g. Standard)')
-param vaultSkuTier string = 'Standard'
-// Recommended replication: GRS — set the vault replication manually after creation if needed.
+// Vault and UAI name patterns
+var vaultNames = [for region in regions: 'rsv-${region}']
+var uaiNames = [for region in regions: 'uai-${region}']
+var backupPolicyNames = [for region in regions: 'backup-policy-${region}']
 
-// Deploy Recovery Services Vault using a module
-module vaultModule './modules/recoveryVault.bicep' = {
-  name: 'recoveryVaultModule'
+// Common parameters
+var backupScheduleRunTimes = [ '01:00' ]
+var dailyRetentionDays = 14
+var weeklyRetentionDays = 30
+var weeklyBackupDaysOfWeek = [ 'Sunday', 'Wednesday' ]
+var backupFrequency = 'Daily'
+var publicNetworkAccess = 'Enabled'
+var vaultSkuName = 'RS0'
+var vaultSkuTier = 'Standard'
+
+// Create resource groups in each region
+resource rgs 'Microsoft.Resources/resourceGroups@2021-04-01' = [for (region, i) in regions: {
+  name: rgNames[i]
+  location: region
+}]
+
+// Deploy RSV, backup policy, UAI, and RBAC in each RG/region
+module vaults './modules/recoveryVault.bicep' = [for (region, i) in regions: {
+  name: 'recoveryVaultModule-${region}'
+  scope: resourceGroup(rgNames[i])
   params: {
-    vaultName: vaultName
-    location: location
+    vaultName: vaultNames[i]
+    location: region
     publicNetworkAccess: publicNetworkAccess
     skuName: vaultSkuName
     skuTier: vaultSkuTier
   }
-}
+  dependsOn: [rgs[i]]
+}]
 
-// Deploy Backup Policy using a module; depends on vault
-module policyModule './modules/backupPolicy.bicep' = {
-  name: 'backupPolicyModule'
+module policies './modules/backupPolicy.bicep' = [for (region, i) in regions: {
+  name: 'backupPolicyModule-${region}'
+  scope: resourceGroup(rgNames[i])
   params: {
-    vaultName: vaultName
-    backupPolicyName: backupPolicyName
+    vaultName: vaultNames[i]
+    backupPolicyName: backupPolicyNames[i]
     backupFrequency: backupFrequency
     backupScheduleRunTimes: backupScheduleRunTimes
     weeklyBackupDaysOfWeek: weeklyBackupDaysOfWeek
     dailyRetentionDays: dailyRetentionDays
     weeklyRetentionDays: weeklyRetentionDays
   }
-  dependsOn: [vaultModule]
-}
+  dependsOn: [vaults[i]]
+}]
 
-// Create a User Assigned Identity in the same resource group to be used by subscription-scoped policy assignment
-module uaiModule './modules/userAssignedIdentity.bicep' = {
-  name: 'userAssignedIdentityModule'
+module uais './modules/userAssignedIdentity.bicep' = [for (region, i) in regions: {
+  name: 'userAssignedIdentityModule-${region}'
+  scope: resourceGroup(rgNames[i])
   params: {
-    identityName: '${vaultName}-backup-remediator'
-    location: location
+    identityName: uaiNames[i]
+    location: region
   }
-  dependsOn: [vaultModule]
-}
+  dependsOn: [vaults[i]]
+}]
 
-// Export module outputs
-output vaultId string = vaultModule.outputs.vaultId
-output backupPolicyIds array = policyModule.outputs.backupPolicyIds
-output backupPolicyNames array = policyModule.outputs.backupPolicyNames
-output userAssignedIdentityId string = uaiModule.outputs.identityResourceId
-output userAssignedIdentityPrincipalId string = uaiModule.outputs.principalId
+// Assign RBAC role to UAI on each RG (e.g., Backup Operator role)
+var backupOperatorRoleId = 'f1a07417-d97a-45cb-824c-7a7467783830' // Built-in Backup Operator role
+module rbac './modules/roleAssignment.bicep' = [for (region, i) in regions: {
+  name: 'roleAssignmentModule-${region}'
+  scope: resourceGroup(rgNames[i])
+  params: {
+    principalId: uais[i].outputs.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: backupOperatorRoleId
+  }
+  dependsOn: [uais[i]]
+}]
+
+// Export outputs as arrays for all regions
+output vaultIds array = [for (region, i) in regions: vaults[i].outputs.vaultId]
+output backupPolicyIds array = [for (region, i) in regions: policies[i].outputs.backupPolicyIds]
+output backupPolicyNames array = [for (region, i) in regions: policies[i].outputs.backupPolicyNames]
+output userAssignedIdentityIds array = [for (region, i) in regions: uais[i].outputs.identityResourceId]
+output userAssignedIdentityPrincipalIds array = [for (region, i) in regions: uais[i].outputs.principalId]
