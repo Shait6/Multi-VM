@@ -8,7 +8,7 @@ How the solution works (high level)
 2. Validate & build: CI runs `az bicep build` and an ARM/Bicep validate to catch template issues early.
 3. Group deployment: `main.bicep` deploys the Recovery Services Vault and backup policy resources into the chosen resource group and location. It also creates a user-assigned identity and returns its resource id and principal id as outputs.
 4. Role assignment: CI ensures the UAI has the needed RBAC on the vault resource group (so remediation can create protected items).
-5. Subscription assignment & remediation: CI runs a subscription-scoped deployment (`deploy-policy-subscription.bicep`) which creates the policy assignment using the UAI and a `Microsoft.PolicyInsights/remediations` resource to remediate existing non-compliant VMs.
+5. Subscription assignment & remediation: CI deploys a custom DeployIfNotExists policy (via `modules/backupAutoEnablePolicy.bicep`) and a `Microsoft.PolicyInsights/remediations` resource to protect tagged VMs.
 
 File map — what each file does (short and human)
 
@@ -16,14 +16,13 @@ File map — what each file does (short and human)
 	- `backupPolicy.bicep` — creates Daily and/or Weekly backup policy resources, with retention and schedule settings.
 	- `userAssignedIdentity.bicep` — creates the user-assigned managed identity used by policy remediations; outputs resource id and principal id.
 	- `roleAssignment.bicep` — helper to give the UAI Contributor rights on the vault RG (so remediation can create protected items).
-	- `deploy-policy-subscription.bicep` — subscription-scoped template that creates the policy assignment and a remediation resource which runs against existing non-compliant VMs.
+	- (Removed legacy template) `deploy-policy-subscription.bicep` now superseded by `modules/backupAutoEnablePolicy.bicep` + remediation.
 	- `backupAutoEnablePolicy.bicep` / `autoEnablePolicy.rule.json` — policy definition template and rule JSON used by the workflows to create the DeployIfNotExists definition (the workflow replaces placeholders like vault name and role definition id before creating the policy).
 
 	- `Set-DeploymentParameters.ps1` — central parameter generator (normalize schedule times/days, compute retention values, write `main.parameters.json`).
-	- `Create-ResourceGroup.ps1` — idempotent RG creation helper used by CI.
-	- `Deploy-Backup.ps1` — small wrapper used by the Azure DevOps pipeline to run the group deployment.
 	- `Wait-For-AadPrincipal.ps1` — helper to poll AAD until a service principal for the UAI exists (used to avoid PrincipalNotFound timing errors).
-	- `Deploy-AutoEnablePolicySubscription.ps1` / `Deploy-AuditPolicy.ps1` — legacy/scripted alternatives for policy creation (the pipelines use a param-file + `az deployment sub create` or direct `az policy` commands depending on flow).
+	- `Deploy-AutoEnablePolicySubscription.ps1` / `Deploy-AuditPolicy.ps1` — subscription-scope policy deployments (auto-enable and audit flows).
+	- (Removed legacy scripts) `Create-ResourceGroup.ps1`, `Deploy-Backup.ps1`, `Enable-VMBackup.ps1`, `Configure-VaultReplication.ps1` — replaced by multi-region template & automated policy remediation.
 
 	- `.github/workflows/deploy.yml` — GitHub Actions: parameter generation, bicep build validation, group deployment, role assignment for the UAI, and a subscription deployment to create the policy assignment/remediation. Implemented to avoid shell quoting/path mangling on Windows runners by using PowerShell for param file creation and passing the parameters file to `az`.
 	- `azure-pipelines.yml` — Azure DevOps: mirrors the same flow using `AzurePowerShell@5` and `AzureCLI@2` tasks. The pipeline also writes a parameters JSON and uses PowerShell inline scripts for steps that pass resource ids.
@@ -108,6 +107,45 @@ This solution automates the deployment of Azure Recovery Services Vaults (RSVs),
 - Vaults are regional: VMs must be protected by a vault in the same region.
 - All scripts and pipelines are designed for idempotency and safe re-runs.
 - Ensure your deployment identity has sufficient permissions (Policy Contributor, User Access Admin, etc.).
+
+## CI/CD Parameters
+
+Azure DevOps (`azure-pipelines.yml`) parameters:
+
+- `subscriptionId`: Target subscription GUID.
+- `deploymentLocation`: Metadata location for subscription-scope deployment (does not restrict resource regions).
+- `enableAutoRemediation`: `'true'|'false'` to deploy the auto-enable policy job.
+- `multiRegionAutoRemediation`: If `'true'`, creates auto-enable policy per region; otherwise only baseline region.
+- `policyBaselineRegion`: Region used when `multiRegionAutoRemediation` is false.
+- `backupFrequency`: `Daily|Weekly|Both` controls which policy types are deployed.
+- `dailyRetentionDays`: Integer retention for daily points.
+- `weeklyRetentionDays`: Integer retention for weekly points.
+- `weeklyBackupDaysOfWeekString`: Comma-separated list of weekly backup days (e.g. `Sunday,Wednesday`).
+- `vmTagName` / `vmTagValue`: Tag selector for VMs to auto-remediate (default `backup=true`).
+
+GitHub Actions workflow inputs:
+
+- `subscriptionId`
+- `deploymentLocation`
+- `enableAutoRemediation`
+- `weeklyBackupDaysOfWeek`: Comma-separated weekly days.
+- `backupFrequency`
+- `dailyRetentionDays`
+- `weeklyRetentionDays`
+- `vmTagName` / `vmTagValue`
+
+Both pipelines build a transient parameters JSON (e.g. `bicep-params.json`, `main-params.json`) passed to `main.bicep`. Weekly days are converted into an array for the `weeklyBackupDaysOfWeek` Bicep parameter.
+
+Deployment outputs captured:
+
+- `vaultIds` — array of RSV resource IDs.
+- `backupPolicyNames` — policy names per region.
+- `userAssignedIdentityIds` — UAI resource IDs.
+- `userAssignedIdentityPrincipalIds` — principal object IDs for RBAC/policy.
+
+These outputs are written to `deployment-outputs.json` (Azure DevOps) or `gh-deployment-outputs.json` (GitHub) for downstream steps (e.g. reporting or additional policy assignments).
+
+Failure diagnostics (Azure DevOps) dump `deployment-show.json` and `deployment-operations.json` on error. Extend similarly in GitHub by adding an error trap around `az deployment sub create` if desired.
 
 ## Quick start
 

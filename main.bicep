@@ -16,15 +16,24 @@ var vaultNames = [for region in regions: 'rsv-${region}']
 var uaiNames = [for region in regions: 'uai-${region}']
 var backupPolicyNames = [for region in regions: 'backup-policy-${region}']
 
-// Common parameters
-var backupScheduleRunTimes = [ '01:00' ]
-var dailyRetentionDays = 14
-var weeklyRetentionDays = 30
-var weeklyBackupDaysOfWeek = [ 'Sunday', 'Wednesday' ]
-var backupFrequency = 'Daily'
-var publicNetworkAccess = 'Enabled'
-var vaultSkuName = 'RS0'
-var vaultSkuTier = 'Standard'
+@description('Backup schedule run times (UTC HH:mm) applied to all region policies')
+param backupScheduleRunTimes array = [ '01:00' ]
+@description('Daily retention in days')
+param dailyRetentionDays int = 14
+@description('Weekly retention in days')
+param weeklyRetentionDays int = 30
+@description('Days of week for weekly backups')
+param weeklyBackupDaysOfWeek array = [ 'Sunday', 'Wednesday' ]
+@allowed([ 'Daily', 'Weekly', 'Both' ])
+@description('Backup frequency for VM policies across regions')
+param backupFrequency string = 'Daily'
+@allowed([ 'Enabled', 'Disabled' ])
+@description('Public network access setting for vaults')
+param publicNetworkAccess string = 'Enabled'
+@description('Recovery Services Vault SKU name')
+param vaultSkuName string = 'RS0'
+@description('Recovery Services Vault SKU tier')
+param vaultSkuTier string = 'Standard'
 
 // Create resource groups in each region
 resource rgs 'Microsoft.Resources/resourceGroups@2021-04-01' = [for (region, i) in regions: {

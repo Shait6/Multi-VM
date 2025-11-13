@@ -2,13 +2,6 @@ parameters:
 - name: subscriptionId
   type: string
   default: ''
-- name: enableAutoRemediation
-  type: string
-  values:
-    - 'true'
-    - 'false'
-  default: 'false'
-  displayName: 'Enable Auto-Remediation (DeployIfNotExists)'
 - name: deploymentLocation
   type: string
   values:
@@ -18,6 +11,58 @@ parameters:
     - germanywestcentral
   default: westeurope
   displayName: 'Subscription Deployment Location'
+- name: enableAutoRemediation
+  type: string
+  values:
+    - 'true'
+    - 'false'
+  default: 'false'
+  displayName: 'Enable Auto-Remediation (DeployIfNotExists)'
+- name: multiRegionAutoRemediation
+  type: string
+  values:
+    - 'true'
+    - 'false'
+  default: 'false'
+  displayName: 'Remediate All Regions (else baseline only)'
+- name: policyBaselineRegion
+  type: string
+  values:
+    - westeurope
+    - northeurope
+    - swedencentral
+    - germanywestcentral
+  default: westeurope
+  displayName: 'Baseline Region for Policy'
+- name: backupFrequency
+  type: string
+  values:
+    - Daily
+    - Weekly
+    - Both
+  default: Daily
+  displayName: 'Backup Frequency'
+- name: dailyRetentionDays
+  type: number
+  default: 14
+  displayName: 'Daily Retention Days'
+- name: weeklyRetentionDays
+  type: number
+  default: 30
+  displayName: 'Weekly Retention Days'
+- name: weeklyBackupDaysOfWeekString
+  type: string
+  default: 'Sunday,Wednesday'
+  displayName: 'Weekly Backup Days (comma separated)'
+- name: vmTagName
+  type: string
+  default: 'backup'
+  displayName: 'Tag name used to select VMs for remediation'
+- name: vmTagValue
+  type: string
+  default: 'true'
+  displayName: 'Tag value used to select VMs for remediation'
+  
 pool:
   vmImage: 'windows-latest'
 
@@ -37,14 +82,41 @@ stages:
           try { az bicep version | Out-Null } catch { az bicep install }
           az bicep build --file main.bicep --outdir bicep-build
     - task: AzureCLI@2
-      displayName: 'Subscription deployment'
+      displayName: 'Subscription deployment with parameters'
       inputs:
         azureSubscription: 'bicep_deploy_SC'
         scriptType: 'ps'
         scriptLocation: 'inlineScript'
         inlineScript: |
           az account set --subscription "${{ parameters.subscriptionId }}"
-          az deployment sub create --location "${{ parameters.deploymentLocation }}" --template-file main.bicep
+          $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
+          $weeklyDays = "${{ parameters.weeklyBackupDaysOfWeekString }}".Split(',') | ForEach-Object { $_.Trim() }
+          $paramContent = @{
+            backupFrequency        = @{ value = "${{ parameters.backupFrequency }}" }
+            dailyRetentionDays     = @{ value = ${{ parameters.dailyRetentionDays }} }
+            weeklyRetentionDays    = @{ value = ${{ parameters.weeklyRetentionDays }} }
+            weeklyBackupDaysOfWeek = @{ value = $weeklyDays }
+          }
+          $paramContent | ConvertTo-Json -Depth 4 | Out-File bicep-params.json -Encoding utf8
+          Write-Host "Starting deployment $deployName with backupFrequency=${{ parameters.backupFrequency }}"
+          $failed = $false
+          try {
+            az deployment sub create --name $deployName --location "${{ parameters.deploymentLocation }}" --template-file main.bicep --parameters @bicep-params.json -o json > deployment-result.json
+          } catch {
+            Write-Host "Deployment failed. Collecting diagnostics..."; $failed = $true
+          }
+          if ($failed) {
+            az deployment sub show --name $deployName -o json > deployment-show.json 2>$null
+            az deployment operation sub list --name $deployName -o json > deployment-operations.json 2>$null
+            Write-Host "Diagnostics written (deployment-show.json, deployment-operations.json)"; exit 1
+          }
+          $outputs = az deployment sub show --name $deployName --query properties.outputs -o json | ConvertFrom-Json
+          $outputs | ConvertTo-Json -Depth 10 | Out-File deployment-outputs.json -Encoding utf8
+          Write-Host "Vaults:" ($outputs.vaultIds.value -join ', ')
+          Write-Host "Policies:" ($outputs.backupPolicyNames.value -join ', ')
+          Write-Host "UAIs:" ($outputs.userAssignedIdentityIds.value -join ', ')
+          Write-Host "Principals:" ($outputs.userAssignedIdentityPrincipalIds.value -join ', ')
+          Write-Host "Outputs saved -> deployment-outputs.json"
 
   - job: DeployAutoEnablePolicy
     displayName: 'Deploy auto-enable policy'
@@ -52,17 +124,21 @@ stages:
     dependsOn: BuildAndDeployMultiRegion
     steps:
     - task: AzurePowerShell@5
+      displayName: 'Remediate tagged VMs'
       inputs:
         azureSubscription: 'bicep_deploy_SC'
-        ScriptType: 'FilePath'
-        ScriptPath: '$(System.DefaultWorkingDirectory)/scripts/Deploy-AutoEnablePolicySubscription.ps1'
-        ScriptArguments: >
-          -SubscriptionId "${{ parameters.subscriptionId }}" \
-          -Location "${{ parameters.deploymentLocation }}" \
-          -VmTagName "backup" \
-          -VmTagValue "true" \
-          -BackupPolicyName "backup-policy-westeurope" \
-          -VaultName "rsv-westeurope" \
-          -VaultResourceGroup "rsv-rg-westeurope" \
-          -CreateVault $false
+        ScriptType: 'InlineScript'
+        Inline: |
+          $subscriptionId = '${{ parameters.subscriptionId }}'
+          Select-AzSubscription -SubscriptionId $subscriptionId
+          $allRegions = @('westeurope','northeurope','swedencentral','germanywestcentral')
+          $multi = ('${{ parameters.multiRegionAutoRemediation }}' -eq 'true')
+          $targetRegions = if ($multi) { $allRegions } else { @('${{ parameters.policyBaselineRegion }}') }
+          foreach ($r in $targetRegions) {
+            $vaultName = "rsv-$r"
+            $vaultRg = "rsv-rg-$r"
+            $policyName = "backup-policy-$r"
+            Write-Host "Deploying auto-enable policy: region=$r vault=$vaultName policy=$policyName tag=${{ parameters.vmTagName }}=${{ parameters.vmTagValue }}"
+            pwsh ./scripts/Deploy-AutoEnablePolicySubscription.ps1 -SubscriptionId $subscriptionId -Location $r -VmTagName '${{ parameters.vmTagName }}' -VmTagValue '${{ parameters.vmTagValue }}' -BackupPolicyName $policyName -VaultName $vaultName -VaultResourceGroup $vaultRg -CreateVault:$false
+          }
         azurePowerShellVersion: 'LatestVersion'
