@@ -22,6 +22,9 @@ param(
 
     [Parameter(Mandatory=$false)]
     [bool]$CreateVault = $false
+    ,
+    [Parameter(Mandatory=$false)]
+    [string]$AssignmentIdentityResourceId
 )
 
 try {
@@ -66,9 +69,17 @@ try {
     Write-Host "Deploying subscription-scoped DeployIfNotExists policy"
     $deploymentName = "autopolicy-deploy-$((Get-Date).ToString('yyyyMMddHHmmss'))"
 
+    if ([string]::IsNullOrWhiteSpace($AssignmentIdentityResourceId)) {
+      # Derive identity by convention: /subscriptions/<sub>/resourceGroups/rsv-rg-<region>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-<region>
+      $AssignmentIdentityResourceId = "/subscriptions/$SubscriptionId/resourceGroups/rsv-rg-$Location/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$Location"
+      Write-Host "Using derived assignment identity: $AssignmentIdentityResourceId"
+    }
+
     $params = @{
         policyName = 'deployifnotexists-enable-vm-backup'
         policyAssignmentName = "enable-vm-backup-assignment"
+      assignmentLocation = $Location
+      assignmentIdentityId = $AssignmentIdentityResourceId
         vmTagName = $VmTagName
         vmTagValue = $VmTagValue
         vaultName = $VaultName
@@ -76,7 +87,18 @@ try {
         backupPolicyName = $BackupPolicyName
     }
 
-    New-AzSubscriptionDeployment -Name $deploymentName -Location $Location -TemplateFile "$(System.DefaultWorkingDirectory)/modules/backupAutoEnablePolicy.bicep" -TemplateParameterObject $params | Write-Output
+      $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules/backupAutoEnablePolicy.bicep'
+      New-AzSubscriptionDeployment -Name $deploymentName -Location $Location -TemplateFile $modulePath -TemplateParameterObject $params | Write-Output
+
+      Write-Host "Starting remediation for existing non-compliant VMs"
+      $assignment = Get-AzPolicyAssignment -Name 'enable-vm-backup-assignment' -Scope "/subscriptions/$SubscriptionId" -ErrorAction SilentlyContinue
+      if ($null -ne $assignment) {
+        $remediationName = "remediate-vm-backup-$Location"
+        Start-AzPolicyRemediation -Name $remediationName -PolicyAssignmentId $assignment.Id -ResourceDiscoveryMode ExistingNonCompliant | Write-Output
+        Write-Host "Remediation started: $remediationName"
+      } else {
+        Write-Warning "Policy assignment not found; remediation not started. Verify deployment success."
+      }
 
     Write-Host "Subscription-scoped auto-enable policy deployment finished"
 } catch {

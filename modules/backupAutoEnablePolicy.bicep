@@ -4,6 +4,10 @@ targetScope = 'subscription'
 param policyName string = 'deployifnotexists-enable-vm-backup'
 @description('Name for the policy assignment')
 param policyAssignmentName string = 'enable-vm-backup-assignment'
+@description('Azure location for the policy assignment (required when using identity at subscription scope)')
+param assignmentLocation string = 'westeurope'
+@description('Resource ID of the User Assigned Identity to execute the DeployIfNotExists remediation')
+param assignmentIdentityId string
 
 @description('VM tag name to filter which VMs the policy applies to (e.g. "backup")')
 param vmTagName string = 'backup'
@@ -42,11 +46,18 @@ resource policyDef 'Microsoft.Authorization/policyDefinitions@2021-06-01' = {
 
 resource policyAssign 'Microsoft.Authorization/policyAssignments@2021-06-01' = {
   name: policyAssignmentName
+  location: assignmentLocation
   properties: {
     displayName: 'Enable VM backup for tagged VMs'
     description: 'Assign DeployIfNotExists policy to enable VM backup for VMs with the tag.'
     policyDefinitionId: policyDef.id
     parameters: {}
+  }
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${assignmentIdentityId}': {}
+    }
   }
 }
 

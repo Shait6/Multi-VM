@@ -1,4 +1,0 @@
-{
-  "removed": true,
-  "message": "Compiled templates should not be checked into source control. Files under bicep-build are placeholders and have been cleared."
-}

@@ -9,11 +9,12 @@ This solution deploys Azure Recovery Services Vaults (RSVs), backup policies, an
 - One UAI per region granted Backup Operator on its vault resource group.
 - DeployIfNotExists policy + remediation to enable backup for tagged VMs.
 - Optional audit policy (management group scope) via `backupAuditPolicy.bicep`.
+ - Policy assignment uses a User Assigned Identity (UAI) and remediation is automatically started by the deployment script.
 
 ### Core Files
 - `main.bicep` – Orchestrates multi-region RGs, RSVs, policies, identities, RBAC & outputs.
 - `modules/` – `recoveryVault.bicep`, `backupPolicy.bicep`, `userAssignedIdentity.bicep`, `roleAssignment.bicep`, `backupAutoEnablePolicy.bicep`, `backupAuditPolicy.bicep`, `autoEnablePolicy.rule.json`.
-- `scripts/Deploy-AutoEnablePolicySubscription.ps1` – Subscription-scope auto-enable policy deployment.
+- `scripts/Deploy-AutoEnablePolicySubscription.ps1` – Subscription-scope auto-enable policy deployment; attaches a UAI to the policy assignment and starts remediation for existing non-compliant VMs.
 	(Audit policy script and separate audit pipeline removed as unused; `modules/backupAuditPolicy.bicep` remains available if audit coverage is reintroduced.)
 - CI: `azure-pipelines.yml`, `.github/workflows/github-action.yml`, optional `azure-pipelines-audit.yml`.
 
