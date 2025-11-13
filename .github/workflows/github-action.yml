@@ -1,4 +1,4 @@
-name: Deploy Backup Infrastructure
+name: Deploy Multi-Region VM Backup
 
 on:
   workflow_dispatch:
@@ -6,330 +6,50 @@ on:
       subscriptionId:
         description: 'Azure Subscription ID'
         required: true
-      # location removed from workflow_dispatch inputs (use env default below)
-      # location removed from workflow_dispatch inputs
-      enableBackup:
-        description: 'Enable VM Backup'
-        required: false
-        default: 'true'
-        type: choice
-        options: ['true', 'false']
-      backupFrequency:
-        description: 'Backup Frequency'
-        required: false
-        default: 'Daily'
-        type: choice
-        options: ['Daily', 'Weekly', 'Both']
       enableAutoRemediation:
-        description: 'Enable Auto-Remediation'
+        description: 'Enable Auto-Remediation (DeployIfNotExists)'
         required: false
         default: 'false'
         type: choice
-        options: ['true', 'false']
-      createVault:
-        description: 'Create Vault if not exists'
+        options: ['true','false']
+      deploymentLocation:
+        description: 'Subscription deployment metadata location'
         required: false
-        default: 'false'
+        default: 'westeurope'
         type: choice
-        options: ['true', 'false']
-      vaultResourceGroup:
-        description: 'Vault Resource Group'
-        required: false
-        default: 'rg-vault-default'
-      backupPolicyName:
-        description: 'Backup Policy Name'
-        required: false
-        default: 'DefaultPolicy'
-      resourceGroupName:
-        description: 'Resource Group Name'
-        required: false
-        default: 'rg-vmbackup-default'
-      dailyRetentionDays:
-        description: 'Daily Backup Retention Days'
-        required: false
-        default: '14'
-      weeklyRetentionDays:
-        description: 'Weekly Backup Retention Days'
-        required: false
-        default: '30'
+        options: ['westeurope','northeurope','swedencentral','germanywestcentral']
 
 jobs:
   deploy:
     runs-on: windows-latest
-
     env:
-      # Static defaults
-      MANAGEMENT_GROUP_ID: ''
-      VM_TAG_NAME: 'backup'
-      VM_TAG_VALUE: 'true'
-      VAULT_NAME: 'rsv-backup-test'
-      VAULT_SKU_NAME: 'RS0'
-      VAULT_SKU_TIER: 'Standard'
-      LOCATION: 'northeurope'
-      # Toggle to enable Az PowerShell context setup when required by downstream steps
-      NEED_AZ_POWERSHELL: 'false'
-
-      # Map workflow inputs
       SUBSCRIPTION_ID: ${{ github.event.inputs.subscriptionId }}
-      ENABLE_BACKUP: ${{ github.event.inputs.enableBackup }}
-      BACKUP_FREQUENCY: ${{ github.event.inputs.backupFrequency }}
       ENABLE_AUTO_REMEDIATION: ${{ github.event.inputs.enableAutoRemediation }}
-      CREATE_VAULT: ${{ github.event.inputs.createVault }}
-      VAULT_RESOURCE_GROUP: ${{ github.event.inputs.vaultResourceGroup }}
-      BACKUP_POLICY_NAME: ${{ github.event.inputs.backupPolicyName }}
-      RESOURCE_GROUP_NAME: ${{ github.event.inputs.resourceGroupName }}
-      DAILY_RETENTION_DAYS: ${{ github.event.inputs.dailyRetentionDays }}
-      WEEKLY_RETENTION_DAYS: ${{ github.event.inputs.weeklyRetentionDays }}
-
+      DEPLOYMENT_LOCATION: ${{ github.event.inputs.deploymentLocation }}
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔐 Azure login using your stored service principal secret
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.serivcon }}
 
-      # 🧩 Initialize Azure PowerShell session only when needed (imports Az modules and saves context)
-      - name: Prepare Az PowerShell session (only if needed)
-        if: ${{ env.NEED_AZ_POWERSHELL == 'true' }}
-        shell: pwsh
-        env:
-          AZUREPS_HOST_ENVIRONMENT: AzurePipelines
-        run: |
-          Install-Module Az.Accounts -Force -AllowClobber -Scope CurrentUser
-          Install-Module Az.Resources -Force -AllowClobber -Scope CurrentUser
-          # Save Az context for subsequent PowerShell steps that rely on it
-          Save-AzContext -Path "$env:USERPROFILE\azurecontext.json" -Force
-
-      # 🧱 Prepare parameters
-      - name: Prepare Deployment Parameters
-        shell: pwsh
-        env:
-          AZUREPS_HOST_ENVIRONMENT: AzurePipelines
-          AZURE_CREDENTIALS: ${{ secrets.serivcon }}
-        run: |
-          # Azure CLI login is already handled by azure/login action
-          pwsh ./scripts/Set-DeploymentParameters.ps1 `
-            -Location "$env:LOCATION" `
-            -SubscriptionId "$env:SUBSCRIPTION_ID" `
-            -VaultName "$env:VAULT_NAME" `
-            -BackupPolicyName "$env:BACKUP_POLICY_NAME" `
-            -DailyRetentionDays $env:DAILY_RETENTION_DAYS `
-            -WeeklyRetentionDays $env:WEEKLY_RETENTION_DAYS `
-            -VaultSkuName "$env:VAULT_SKU_NAME" `
-            -VaultSkuTier "$env:VAULT_SKU_TIER" `
-            -IncludeLocation
-
-      # (artifact upload removed per user request)
-
-      # 🧰 Bicep build pre-check: compile templates to catch schema/format errors early
-      - name: Bicep build (pre-check)
+      - name: Bicep build (syntax check)
         shell: pwsh
         run: |
-          # Ensure az bicep is available; install if missing
-          try {
-            az bicep version | Out-Null
-          } catch {
-            az bicep install
-          }
-
-          # Build the main Bicep file (this will expand modules and validate syntax)
+          try { az bicep version | Out-Null } catch { az bicep install }
           az bicep build --file main.bicep --outdir bicep-build
 
-      # (compiled template upload removed per user request)
-
-      # 🔍 Show deployment parameters (first 2KB) for debugging
-      - name: Show deployment parameters
-        if: ${{ env.ENABLE_BACKUP == 'true' }}
+      - name: Deploy multi-region backup (subscription scope)
         shell: pwsh
         run: |
-          if (Test-Path -Path 'main.parameters.json') {
-            $s = Get-Content -Path 'main.parameters.json' -Raw
-            $max = 2000
-            if ($s.Length -gt $max) { $out = $s.Substring(0, $max) + "`n...(truncated)" } else { $out = $s }
-            Write-Host "--- main.parameters.json (preview) ---"
-            Write-Host $out
-            Write-Host "--- end preview ---"
-          } else {
-            Write-Host "main.parameters.json not found"
-          }
-
-      # 🏗️ Create resource group
-      - name: Create Resource Group
-        shell: pwsh
-        run: |
-          # Azure CLI login is already handled by azure/login action
-          az group create --name "$env:RESOURCE_GROUP_NAME" --location "$env:LOCATION"
-
-      # ✅ Validate deployment (pre-check) - PowerShell-safe parameters quoting
-      - name: Validate deployment (pre-check)
-        if: ${{ env.ENABLE_BACKUP == 'true' }}
-        shell: pwsh
-        run: |
-          # Ensure we're targeting the right subscription for validation
           az account set --subscription "$env:SUBSCRIPTION_ID"
+          az deployment sub create --location "$env:DEPLOYMENT_LOCATION" --template-file main.bicep
 
-          # Run validate with PowerShell-safe parameters file quoting
-          $out = az deployment group validate --resource-group "$env:RESOURCE_GROUP_NAME" --template-file main.bicep --parameters "@main.parameters.json" 2>&1
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "Deployment validation FAILED. Output:" 
-            Write-Host $out
-            # Re-run with json output to capture provider details for artifacts/logs
-            az deployment group validate --resource-group "$env:RESOURCE_GROUP_NAME" --template-file main.bicep --parameters "@main.parameters.json" -o json
-            exit 1
-          }
-          Write-Host "Deployment validation succeeded."
-
-      # 💾 Deploy backup infrastructure
-      - name: Deploy Backup Infrastructure
-        if: ${{ env.ENABLE_BACKUP == 'true' }}
-        shell: bash
-        run: |
-          # Azure CLI login is already handled by azure/login action
-          # Use the generated parameters file so arrays and retention values are passed correctly.
-          az deployment group create \
-            --name main \
-            --resource-group "$RESOURCE_GROUP_NAME" \
-            --template-file "main.bicep" \
-            --parameters @main.parameters.json
-      # (ops capture removed per user request)
-      # (Removed) Collect-deployment-operations and artifact upload steps per user request
-      # NOTE: 'Collect failed deployment operations' step removed per request.
-
-      # 🛡️ Deploy auto-enable policy (Option B: preprocess JSON and create policy directly)
-      - name: Deploy Auto-Enable Policy (preprocess JSON)
-        if: ${{ env.ENABLE_AUTO_REMEDIATION == 'true' }}
-        shell: pwsh
-        run: |
-          # Azure CLI login is already handled by azure/login action
-          az account set --subscription "$env:SUBSCRIPTION_ID"
-
-          # Build the full roleDefinitionId for Contributor-like role used by remediation
-          $roleGuid = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
-          $roleId = "/subscriptions/$env:SUBSCRIPTION_ID/providers/Microsoft.Authorization/roleDefinitions/$roleGuid"
-
-          # Read and replace placeholders in the policy JSON
-          $raw = Get-Content -Path 'modules/autoEnablePolicy.rule.json' -Raw
-
-          # Trim environment values to avoid accidental trailing characters and use simple replacements
-          $vaultName = ($env:VAULT_NAME ?? '').Trim()
-          $vaultRg = ($env:VAULT_RESOURCE_GROUP ?? '').Trim()
-          $backupPolicyName = ($env:BACKUP_POLICY_NAME ?? '').Trim()
-          $tagName = ($env:VM_TAG_NAME ?? '').Trim()
-          $tagValue = ($env:VM_TAG_VALUE ?? '').Trim()
-
-          # Use simple string replacement to avoid inserting regex-style escapes into the roleDefinitionId
-          $resolved = $raw
-          $resolved = $resolved.Replace('__ROLEDEFID__', $roleId)
-          $resolved = $resolved.Replace('__VAULT_NAME__', $vaultName)
-          $resolved = $resolved.Replace('__VAULT_RG__', $vaultRg)
-          $resolved = $resolved.Replace('__BACKUP_POLICY__', $backupPolicyName)
-          $resolved = $resolved.Replace('__TAGNAME__', $tagName)
-          $resolved = $resolved.Replace('__TAGVALUE__', $tagValue)
-
-          $outPath = 'modules/autoEnablePolicy.resolved.json'
-          $resolved | Out-File -FilePath $outPath -Encoding utf8
-
-          # Policy and assignment names
-          $policyName = 'deployifnotexists-enable-vm-backup'
-          $assignmentName = 'enable-vm-backup-assignment'
-
-          # Create or update the policy definition
-          $exists = az policy definition show --name $policyName --query name -o tsv 2>$null
-          if ($exists) {
-            az policy definition update --name $policyName --rules $outPath --display-name 'DeployIfNotExists: enable VM backup for tagged VMs'
-          } else {
-            az policy definition create --name $policyName --display-name 'DeployIfNotExists: enable VM backup for tagged VMs' --rules $outPath --mode Indexed
-          }
-
-          # Get the policy id
-          $policyId = az policy definition show --name $policyName --query id -o tsv
-
-          # (system-assigned policy assignment removed - using UAI subscription deployment instead)
-
-      # (policy JSON upload removed per user request)
-
-      # ▶️ Create role assignment for the UAI (separate step to avoid AAD propagation delays)
-      - name: Deploy role assignment for UAI (wait for principal)
+      - name: Deploy auto-enable policy (DeployIfNotExists)
         if: ${{ env.ENABLE_AUTO_REMEDIATION == 'true' }}
         shell: pwsh
         run: |
           az account set --subscription "$env:SUBSCRIPTION_ID"
-
-          # Read outputs from the group deployment
-          $identityPrincipal = az deployment group show --name main --resource-group "$env:RESOURCE_GROUP_NAME" --query properties.outputs.userAssignedIdentityPrincipalId.value -o tsv
-          $identityId = az deployment group show --name main --resource-group "$env:RESOURCE_GROUP_NAME" --query properties.outputs.userAssignedIdentityId.value -o tsv
-          if (-not $identityPrincipal -or -not $identityId) {
-            Write-Error "Failed to resolve user-assigned identity outputs from group deployment. identityPrincipal='$identityPrincipal' identityId='$identityId'"
-            exit 1
-          }
-
-          Write-Host "Found identity principal: $identityPrincipal"
-
-          # Call helper script to wait for AAD replication (keeps workflow YAML small)
-          pwsh ./scripts/Wait-For-AadPrincipal.ps1 -PrincipalId $identityPrincipal -TimeoutSeconds 180
-
-          Write-Host "AAD replication complete; creating role assignment via Bicep"
-          $roleGuid = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
-          $roleId = "/subscriptions/$env:SUBSCRIPTION_ID/providers/Microsoft.Authorization/roleDefinitions/$roleGuid"
-
-          az deployment group create --name assign-role --resource-group "$env:RESOURCE_GROUP_NAME" --template-file deploy-role-assignment.bicep --parameters principalId=$identityPrincipal roleDefinitionId=$roleId
-
-      # 🧩 Deploy subscription-scoped policy assignment using the user-assigned identity created in the resource group deployment
-      - name: Deploy subscription-scoped policy assignment using UAI
-        if: ${{ env.ENABLE_AUTO_REMEDIATION == 'true' }}
-        shell: pwsh
-        run: |
-          # Use PowerShell to avoid MSYS path conversion on Windows runners when passing leading-slash resource ids
-          az account set --subscription "$env:SUBSCRIPTION_ID"
-
-          Write-Host 'Retrieving user-assigned identity resource id from resource group deployment outputs...'
-          $identityId = az deployment group show --name main --resource-group "$env:RESOURCE_GROUP_NAME" --query properties.outputs.userAssignedIdentityId.value -o tsv
-          if (-not $identityId) {
-            Write-Error 'Failed to resolve user-assigned identity id from deployment outputs.'
-            exit 1
-          }
-          Write-Host "Found identity: $identityId"
-
-          # Ensure the policy definition exists (created earlier by the preprocessing step)
-          $policyName = 'deployifnotexists-enable-vm-backup'
-          Write-Host 'Creating subscription deployment to assign policy using UAI...'
-
-          $assignParams = @{ 
-            assignmentName = @{ value = 'enable-vm-backup-assignment' }
-            policyDefinitionName = @{ value = $policyName }
-            userAssignedIdentityId = @{ value = $identityId }
-            policyDefinitionLocation = @{ value = $env:LOCATION }
-          }
-          $assignParams | ConvertTo-Json -Depth 10 | Out-File -FilePath assign-params.json -Encoding utf8
-
-          # Try the subscription deployment, and if it fails with identity-related errors, wait 60s and retry once.
-          $deployName = 'assign-policy'
-          $maxAttempts = 2
-          $attempt = 1
-          $lastError = $null
-          while ($attempt -le $maxAttempts) {
-            Write-Host ("Attempt {0} of {1}: creating subscription deployment '{2}' in {3}" -f $attempt, $maxAttempts, $deployName, $env:LOCATION)
-            try {
-              az deployment sub create --name $deployName --template-file deploy-policy-subscription.bicep --location "$env:LOCATION" --parameters "@assign-params.json" | Out-Null
-              Write-Host ("Subscription deployment succeeded on attempt {0}" -f $attempt)
-              $lastError = $null
-              break
-            } catch {
-              $lastError = $_.Exception.Message
-              Write-Host ("Subscription deployment failed on attempt {0}: {1}" -f $attempt, $lastError)
-              if ($attempt -lt $maxAttempts) {
-                Write-Host "Waiting 60 seconds before retrying..."
-                Start-Sleep -Seconds 60
-              }
-            }
-            $attempt++
-          }
-
-          if ($lastError) {
-            Write-Error "Subscription deployment failed after $maxAttempts attempts: $lastError"
-            # Re-throw to fail the job with the last error message
-            exit 1
-          }
+          pwsh ./scripts/Deploy-AutoEnablePolicySubscription.ps1 -SubscriptionId "$env:SUBSCRIPTION_ID" -Location "$env:DEPLOYMENT_LOCATION" -VmTagName "backup" -VmTagValue "true" -BackupPolicyName "backup-policy-westeurope" -VaultName "rsv-westeurope" -VaultResourceGroup "rsv-rg-westeurope" -CreateVault:$false
