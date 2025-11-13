@@ -1,0 +1,167 @@
+name: Deploy Multi-Region VM Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      subscriptionId:
+        description: 'Azure Subscription ID'
+        required: true
+      enableAutoRemediation:
+        description: 'Enable Auto-Remediation (DeployIfNotExists)'
+        required: false
+        default: 'false'
+      DAILY_RETENTION: '14'
+      WEEKLY_RETENTION: '30'
+      deploymentLocation:
+        description: 'Subscription deployment metadata location'
+        required: false
+        default: 'westeurope'
+        type: choice
+        options: ['westeurope','northeurope','swedencentral','germanywestcentral']
+      weeklyBackupDaysOfWeek:
+        description: 'Weekly backup days (comma separated)'
+        required: false
+        default: 'Sunday,Wednesday'
+      backupFrequency:
+        description: 'Backup frequency'
+        required: false
+        default: 'Daily'
+        type: choice
+        options: ['Daily','Weekly','Both']
+      backupScheduleTime:
+        description: 'Backup schedule time (HH:mm)'
+        required: false
+        default: '18:30'
+      backupTimeZone:
+        description: 'Backup schedule time zone'
+        required: false
+        default: 'UTC'
+      instantRestoreRetentionDays:
+        description: 'Instant restore retention (days)'
+        required: false
+        default: '2'
+      vmTagName:
+        description: 'Tag name used to select VMs for remediation'
+        required: false
+        default: 'backup'
+      vmTagValue:
+        description: 'Tag value used to select VMs for remediation'
+        required: false
+        default: 'true'
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    env:
+      SUBSCRIPTION_ID: ${{ github.event.inputs.subscriptionId }}
+      ENABLE_AUTO_REMEDIATION: ${{ github.event.inputs.enableAutoRemediation }}
+      DEPLOYMENT_LOCATION: ${{ github.event.inputs.deploymentLocation }}
+      WEEKLY_DAYS: ${{ github.event.inputs.weeklyBackupDaysOfWeek }}
+      BACKUP_FREQUENCY: ${{ github.event.inputs.backupFrequency }}
+      DAILY_RETENTION: ${{ github.event.inputs.dailyRetentionDays }}
+      WEEKLY_RETENTION: ${{ github.event.inputs.weeklyRetentionDays }}
+      VM_TAG_NAME: ${{ github.event.inputs.vmTagName }}
+      VM_TAG_VALUE: ${{ github.event.inputs.vmTagValue }}
+      BACKUP_TIME: ${{ github.event.inputs.backupScheduleTime }}
+      BACKUP_TZ: ${{ github.event.inputs.backupTimeZone }}
+      INSTANT_RESTORE_DAYS: ${{ github.event.inputs.instantRestoreRetentionDays }}
+      
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.serivcon }}
+
+      - name: Bicep build (syntax check)
+        shell: pwsh
+        run: |
+          try { az bicep version | Out-Null } catch { az bicep install }
+          az bicep build --file main.bicep --outdir bicep-build
+
+      - name: Deploy multi-region backup (subscription scope)
+        shell: pwsh
+        run: |
+          az account set --subscription "$env:SUBSCRIPTION_ID"
+          $days = $env:WEEKLY_DAYS.Split(',') | ForEach-Object { $_.Trim() }
+          $paramObj = @{
+            backupFrequency        = @{ value = $env:BACKUP_FREQUENCY }
+            dailyRetentionDays     = @{ value = [int]$env:DAILY_RETENTION }
+            weeklyRetentionDays    = @{ value = [int]$env:WEEKLY_RETENTION }
+            weeklyBackupDaysOfWeek = @{ value = $days }
+            backupScheduleRunTimes = @{ value = @($env:BACKUP_TIME) }
+            backupTimeZone         = @{ value = $env:BACKUP_TZ }
+            instantRestoreRetentionDays = @{ value = [int]$env:INSTANT_RESTORE_DAYS }
+            enableMonthlyRetention = @{ value = $false }
+            enableYearlyRetention  = @{ value = $false }
+          }
+          $paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8
+          $deployName = "gh-multi-region-$(Get-Date -Format yyyyMMddHHmmss)"
+          echo "Starting deployment $deployName with frequency=$env:BACKUP_FREQUENCY days=$env:WEEKLY_DAYS"
+          if (-not (az deployment sub create --name $deployName --location "$env:DEPLOYMENT_LOCATION" --template-file main.bicep --parameters @main-params.json -o json > gh-deployment.json)) { exit 1 }
+          $outputs = az deployment sub show --name $deployName --query properties.outputs -o json | ConvertFrom-Json
+          $outputs | ConvertTo-Json -Depth 10 | Out-File gh-deployment-outputs.json -Encoding utf8
+          echo "Vaults: $($outputs.vaultIds.value -join ', ')"
+          echo "Policies: $($outputs.backupPolicyNames.value -join ', ')"
+          echo "UAIs: $($outputs.userAssignedIdentityIds.value -join ', ')"
+          echo "Principals: $($outputs.userAssignedIdentityPrincipalIds.value -join ', ')"
+
+  remediate:
+    if: ${{ github.event.inputs.enableAutoRemediation == 'true' }}
+    needs: deploy
+    runs-on: windows-latest
+    env:
+      SUBSCRIPTION_ID: ${{ github.event.inputs.subscriptionId }}
+      DEPLOYMENT_LOCATION: ${{ github.event.inputs.deploymentLocation }}
+      VM_TAG_NAME: ${{ github.event.inputs.vmTagName }}
+      VM_TAG_VALUE: ${{ github.event.inputs.vmTagValue }}
+      WAIT_MINUTES: '5'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.serivcon }}
+
+      - name: Remediate tagged VMs (baseline region)
+        shell: pwsh
+        run: |
+          az account set --subscription "$env:SUBSCRIPTION_ID"
+
+          $wait = [int]$env:WAIT_MINUTES
+          if ($wait -gt 0) { Write-Host "Waiting $wait minute(s) before remediation..."; Start-Sleep -Seconds ($wait * 60) }
+
+          $r = $env:DEPLOYMENT_LOCATION
+          $vaultName = "rsv-$r"
+          $vaultRg   = "rsv-rg-$r"
+          $policyName = "backup-policy-$r"
+          $uaiId = "/subscriptions/$env:SUBSCRIPTION_ID/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
+
+          echo "Deploying policy assignment for region=$r vault=$vaultName policy=$policyName"
+          az deployment sub create `
+            --name "remediate-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" `
+            --location $r `
+            --template-file modules/backupAutoEnablePolicy.bicep `
+            --parameters `
+              assignmentLocation=$r `
+              assignmentIdentityId=$uaiId `
+              vmTagName=$env:VM_TAG_NAME `
+              vmTagValue=$env:VM_TAG_VALUE `
+              vaultName=$vaultName `
+              vaultResourceGroup=$vaultRg `
+              backupPolicyName=$policyName `
+            -o none
+
+          $assign = az policy assignment show -n enable-vm-backup-assignment -o json | ConvertFrom-Json
+          if ($null -ne $assign) {
+            $remName = "remediate-vm-backup-$r"
+            echo "Starting remediation: $remName"
+            az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ExistingNonCompliant -o none
+          } else {
+            echo "Warning: Policy assignment not found after deployment in region $r"
+          }
+          
