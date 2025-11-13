@@ -1,0 +1,262 @@
+parameters:
+- name: subscriptionId
+  type: string
+  default: ''
+- name: managementGroupId
+  type: string
+  default: ''
+- name: vmTagName
+  type: string
+  default: 'backup'
+- name: vmTagValue
+  type: string
+  default: 'true'
+- name: location
+  type: string
+  values:
+    - westeurope
+    - northeurope
+    - swedencentral
+    - germanywestcentral
+  default: westeurope
+- name: resourceGroupName
+  type: string
+  displayName: 'Resource Group Name'
+  default: 'rg-vmbackup-default'
+- name: vaultName
+  type: string
+  displayName: 'Recovery Services Vault Name'
+  default: 'rsv-backup-default'
+- name: vaultSkuName
+  type: string
+  displayName: 'Recovery Services Vault SKU Name'
+  default: 'RS0'
+- name: vaultSkuTier
+  type: string
+  displayName: 'Recovery Services Vault SKU Tier'
+  default: 'Standard'
+  
+- name: backupPolicyName
+  type: string
+  displayName: 'Backup Policy Name'
+  default: 'DefaultPolicy'
+- name: enableBackup
+  type: string
+  values:
+    - 'true'
+    - 'false'
+  default: 'true'
+  displayName: 'Enable VM Backup'
+- name: backupFrequency
+  type: string
+  values:
+    - 'Daily'
+    - 'Weekly'
+    - 'Both'
+  default: 'Daily'
+  displayName: 'Backup Frequency'
+- name: dailyRetentionDays
+  type: number
+  default: '14'
+  displayName: 'Daily Backup Retention Days'
+- name: weeklyRetentionDays
+  type: number
+  default: '30'
+  displayName: 'Weekly Backup Retention Days'
+- name: enableAutoRemediation
+  type: string
+  values:
+    - 'true'
+    - 'false'
+  default: 'false'
+  displayName: 'Enable Auto-Remediation (DeployIfNotExists)'
+- name: createVault
+  type: string
+  values:
+    - 'true'
+    - 'false'
+  default: 'false'
+  displayName: 'Create Recovery Services Vault if not exists'
+- name: vaultResourceGroup
+  type: string
+  default: ''
+  displayName: 'Vault Resource Group (if creating vault)'
+pool:
+  vmImage: 'windows-latest'
+
+stages:
+- stage: Deploy
+  jobs:
+  - job: PrepareParameters
+    displayName: 'Prepare Parameters'
+    steps:
+    - task: AzurePowerShell@5
+      inputs:
+        azureSubscription: 'bicep_deploy_SC'
+        ScriptType: 'FilePath'
+        ScriptPath: '$(System.DefaultWorkingDirectory)/scripts/Set-DeploymentParameters.ps1'
+        ScriptArguments: >
+          -Location "${{ parameters.location }}"
+          -SubscriptionId "${{ parameters.subscriptionId }}"
+          -VaultName "${{ parameters.vaultName }}"
+          -BackupPolicyName "${{ parameters.backupPolicyName }}"
+          -DailyRetentionDays ${{ parameters.dailyRetentionDays }}
+          -WeeklyRetentionDays ${{ parameters.weeklyRetentionDays }}
+          -VaultSkuName "${{ parameters.vaultSkuName }}" \
+          -VaultSkuTier "${{ parameters.vaultSkuTier }}"
+        azurePowerShellVersion: 'LatestVersion'
+    # (Removed) Collect deployment operations and artifact publish steps per user request
+
+    - task: AzureCLI@2
+      displayName: 'Create role assignment for UAI (wait until principal exists)'
+      inputs:
+        azureSubscription: 'bicep_deploy_SC'
+        scriptType: 'ps'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          $rgName = "${{ parameters.resourceGroupName }}"
+
+          # read outputs from group deployment
+          $identityPrincipal = az deployment group show --name main --resource-group $rgName --query properties.outputs.userAssignedIdentityPrincipalId.value -o tsv
+          $identityId = az deployment group show --name main --resource-group $rgName --query properties.outputs.userAssignedIdentityId.value -o tsv
+          if (-not $identityPrincipal -or -not $identityId) {
+            Write-Error "Failed to resolve identity outputs from group deployment"
+            exit 1
+          }
+
+          Write-Host "Waiting for AAD replication for principal $identityPrincipal (helper script)"
+          pwsh ./scripts/Wait-For-AadPrincipal.ps1 -PrincipalId $identityPrincipal -TimeoutSeconds 180
+
+          $roleGuid = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
+          $roleId = "/subscriptions/${{ parameters.subscriptionId }}/providers/Microsoft.Authorization/roleDefinitions/$roleGuid"
+          az deployment group create --name assign-role --resource-group $rgName --template-file deploy-role-assignment.bicep --parameters principalId=$identityPrincipal roleDefinitionId=$roleId
+    - task: AzureCLI@2
+      displayName: 'Validate deployment (pre-check)'
+      inputs:
+        azureSubscription: 'bicep_deploy_SC'
+        scriptType: 'ps'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az account set --subscription "${{ parameters.subscriptionId }}"
+          az deployment group validate --resource-group "${{ parameters.resourceGroupName }}" --template-file main.bicep --parameters "@main.parameters.json"
+
+  - job: CreateResourceGroup
+    displayName: 'Create Resource Group'
+    dependsOn: PrepareParameters
+    steps:
+    - task: AzurePowerShell@5
+      inputs:
+        azureSubscription: 'bicep_deploy_SC'
+        ScriptType: 'FilePath'
+        ScriptPath: '$(System.DefaultWorkingDirectory)/scripts/Create-ResourceGroup.ps1'
+        ScriptArguments: >
+          -ResourceGroupName "${{ parameters.resourceGroupName }}"
+          -Location "${{ parameters.location }}"
+        azurePowerShellVersion: 'LatestVersion'
+
+  - job: DeployBackupInfrastructure
+    displayName: 'Deploy Backup Infrastructure'
+    dependsOn: CreateResourceGroup
+    condition: eq(${{ parameters.enableBackup }}, 'true')
+    steps:
+    # parameters file is generated and validated in the PrepareParameters job
+    - task: AzurePowerShell@5
+      inputs:
+        azureSubscription: 'bicep_deploy_SC'
+        ScriptType: 'FilePath'
+        ScriptPath: '$(System.DefaultWorkingDirectory)/scripts/Deploy-Backup.ps1'
+        ScriptArguments: >
+          -ResourceGroupName "${{ parameters.resourceGroupName }}"
+          -Location "${{ parameters.location }}"
+          -VaultName "${{ parameters.vaultName }}"
+          -BackupPolicyName "${{ parameters.backupPolicyName }}"
+          -BackupFrequency "${{ parameters.backupFrequency }}"
+          -VaultSkuName "${{ parameters.vaultSkuName }}" \
+          -VaultSkuTier "${{ parameters.vaultSkuTier }}"
+        azurePowerShellVersion: 'LatestVersion'
+
+    
+
+  
+
+  - job: DeployAutoEnablePolicy
+    displayName: 'Deploy Auto-Enable Policy (DeployIfNotExists)'
+    dependsOn: DeployBackupInfrastructure
+    condition: eq(${{ parameters.enableAutoRemediation }}, 'true')
+    steps:
+    - task: AzurePowerShell@5
+      inputs:
+        azureSubscription: 'bicep_deploy_SC'
+        ScriptType: 'FilePath'
+        ScriptPath: '$(System.DefaultWorkingDirectory)/scripts/Deploy-AutoEnablePolicySubscription.ps1'
+        ScriptArguments: >
+          -SubscriptionId "${{ parameters.subscriptionId }}" \
+          -Location "${{ parameters.location }}" \
+          -VmTagName "${{ parameters.vmTagName }}" \
+          -VmTagValue "${{ parameters.vmTagValue }}" \
+          -BackupPolicyName "${{ parameters.backupPolicyName }}" \
+          -VaultName "${{ parameters.vaultName }}" \
+          -VaultResourceGroup "${{ parameters.vaultResourceGroup }}" \
+          -CreateVault "${{ parameters.createVault }}"
+        azurePowerShellVersion: 'LatestVersion'
+
+    - task: PowerShell@2
+      displayName: 'No-op: system-assigned assignment removed'
+      inputs:
+        targetType: 'inline'
+        script: |
+          Write-Host 'System-assigned policy assignment step removed; using UAI + subscription-scoped Bicep instead.'
+
+    - task: AzureCLI@2
+      displayName: 'Create subscription-scoped policy assignment via bicep using UAI'
+      inputs:
+        azureSubscription: 'bicep_deploy_SC'
+        scriptType: 'ps'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          $subscriptionId = "${{ parameters.subscriptionId }}"
+          $rgName = "${{ parameters.resourceGroupName }}"
+          $policyName = 'deployifnotexists-enable-vm-backup'
+          Write-Host "Retrieving user-assigned identity id from resource group deployment outputs..."
+          $identityId = az deployment group show --name main --resource-group $rgName --query properties.outputs.userAssignedIdentityId.value -o tsv
+          if (-not $identityId) {
+            Write-Error "Failed to get userAssignedIdentityId from group deployment outputs"
+            exit 1
+          }
+          Write-Host "Found identity id: $identityId"
+
+          Write-Host "Creating subscription deployment to create policy assignment using the UAI"
+          $assignParams = @{ 
+            assignmentName = @{ value = 'enable-vm-backup-assignment' }
+            policyDefinitionName = @{ value = $policyName }
+            userAssignedIdentityId = @{ value = $identityId }
+          }
+          $assignParams | ConvertTo-Json -Depth 10 | Out-File -FilePath assign-params.json -Encoding utf8
+
+          # Use a unique deployment name per pipeline run to avoid location collisions with previous runs
+          $deployName = "assign-policy-$env:BUILD_BUILDID"
+
+          $maxAttempts = 3
+          $attempt = 1
+          $lastError = $null
+          while ($attempt -le $maxAttempts) {
+            Write-Host ("Attempt {0} of {1}: creating subscription deployment '{2}' in {3}" -f $attempt, $maxAttempts, $deployName, "${{ parameters.location }}")
+            try {
+              az deployment sub create --location "${{ parameters.location }}" --name $deployName --template-file deploy-policy-subscription.bicep --parameters "@assign-params.json" | Out-Null
+              Write-Host ("Subscription deployment succeeded on attempt {0}" -f $attempt)
+              $lastError = $null
+              break
+            } catch {
+              $lastError = $_.Exception.Message
+              Write-Host ("Subscription deployment failed on attempt {0}: {1}" -f $attempt, $lastError)
+              if ($attempt -lt $maxAttempts) {
+                Write-Host "Waiting 60 seconds before retrying..."
+                Start-Sleep -Seconds 60
+              }
+            }
+            $attempt++
+          }
+          if ($lastError) {
+            Write-Error "Subscription deployment failed after $maxAttempts attempts: $lastError"
+            exit 1
+          }
