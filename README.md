@@ -14,7 +14,7 @@ This solution deploys Azure Recovery Services Vaults (RSVs), backup policies, an
 - `main.bicep` – Orchestrates multi-region RGs, RSVs, policies, identities, RBAC & outputs.
 - `modules/` – `recoveryVault.bicep`, `backupPolicy.bicep`, `userAssignedIdentity.bicep`, `roleAssignment.bicep`, `backupAutoEnablePolicy.bicep`, `backupAuditPolicy.bicep`, `autoEnablePolicy.rule.json`.
 - `scripts/Deploy-AutoEnablePolicySubscription.ps1` – Subscription-scope auto-enable policy deployment.
-- `scripts/Deploy-AuditPolicy.ps1` – Management group audit policy deployment.
+	(Audit policy script and separate audit pipeline removed as unused; `modules/backupAuditPolicy.bicep` remains available if audit coverage is reintroduced.)
 - CI: `azure-pipelines.yml`, `.github/workflows/github-action.yml`, optional `azure-pipelines-audit.yml`.
 
 ### Removed Legacy Files
