@@ -113,15 +113,15 @@ module uais './modules/userAssignedIdentity.bicep' = [for (region, i) in regions
   dependsOn: [vaults[i]]
 }]
 
-// Assign RBAC role to UAI on each RG (e.g., Backup Operator role)
-var backupOperatorRoleId = 'f1a07417-d97a-45cb-824c-7a7467783830' // Built-in Backup Operator role
+// Assign RBAC role to UAI on each RSV RG (Backup Contributor is required to enable protection)
+var backupContributorRoleId = '5e0bd9bd-7b93-4f78-a8b0-1f0f781f1493' // Built-in Backup Contributor role
 module rbac './modules/roleAssignment.bicep' = [for (region, i) in regions: {
   name: 'roleAssignmentModule-${region}'
   scope: resourceGroup(rgNames[i])
   params: {
     principalId: uais[i].outputs.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: backupOperatorRoleId
+    roleDefinitionId: backupContributorRoleId
   }
   dependsOn: [uais[i]]
 }]
