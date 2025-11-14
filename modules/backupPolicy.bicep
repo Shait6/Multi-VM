@@ -36,8 +36,6 @@ resource existingVault 'Microsoft.RecoveryServices/vaults@2025-02-01' existing =
 
 // Derived values
 var weeklyRetentionWeeks = int((weeklyRetentionDays + 6) / 7)
-// Convert HH:mm entries to ISO8601 UTC format (service often expects full datetime)
-var isoRunTimes = [for t in backupScheduleRunTimes: '2020-01-01T${t}:00Z']
 
 // DAILY POLICY (minimal – matches working reference)
 resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@2023-04-01' = if (backupFrequency == 'Daily' || backupFrequency == 'Both') {
@@ -50,12 +48,12 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
     schedulePolicy: {
       schedulePolicyType: 'SimpleSchedulePolicy'
       scheduleRunFrequency: 'Daily'
-      scheduleRunTimes: isoRunTimes
+      scheduleRunTimes: backupScheduleRunTimes
     }
     retentionPolicy: {
       retentionPolicyType: 'LongTermRetentionPolicy'
       dailySchedule: {
-        retentionTimes: isoRunTimes
+        retentionTimes: backupScheduleRunTimes
         retentionDuration: {
           count: dailyRetentionDays
           durationType: 'Days'
@@ -88,39 +86,6 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
         retentionDuration: {
           count: weeklyRetentionWeeks
           durationType: 'Weeks'
-        }
-      }
-      monthlySchedule: {
-        retentionScheduleFormatType: monthlyRetentionScheduleFormat
-        retentionScheduleWeekly: {
-          daysOfTheWeek: monthlyDaysOfWeek
-          weeksOfTheMonth: monthlyWeeksOfMonth
-        }
-        retentionTimes: backupScheduleRunTimes
-        retentionDuration: {
-          count: monthlyRetentionMonths
-          durationType: 'Months'
-        }
-      }
-      yearlySchedule: {
-        retentionScheduleFormatType: yearlyRetentionScheduleFormat
-        monthsOfYear: yearlyMonthsOfYear
-        retentionScheduleDaily: {
-          daysOfTheMonth: [
-            {
-              date: 1
-              isLast: false
-            }
-          ]
-        }
-        retentionScheduleWeekly: {
-          daysOfTheWeek: yearlyDaysOfWeek
-          weeksOfTheMonth: yearlyWeeksOfMonth
-        }
-        retentionTimes: backupScheduleRunTimes
-        retentionDuration: {
-          count: yearlyRetentionYears
-          durationType: 'Years'
         }
       }
     }
