@@ -1,132 +1,159 @@
 
 ## Multi-Region Azure VM Backup Automation
 
-Overview
-- Deploys a standardized, multi‑region VM backup platform using Azure Recovery Services Vaults (RSVs), backup policies, and per‑region User Assigned Identities (UAIs).
-- Automates RBAC and an optional DeployIfNotExists policy that protects tagged VMs, including remediation for existing VMs.
-- Delivered as subscription‑scope Bicep with CI/CD for GitHub Actions and Azure DevOps.
+### 1. Overview
+This solution deploys and manages a standardized multi‑region Azure VM backup platform. It creates per‑region Recovery Services Vaults (RSVs), daily/weekly backup policies (optionally both), user‑assigned identities (UAIs), and role assignments. A DeployIfNotExists policy can automatically enable backup for tagged virtual machines, with remediation executed on demand.
 
-Architecture
-- Four resource groups (one per region): `westeurope`, `northeurope`, `swedencentral`, `germanywestcentral`.
-- One RSV per region; cross‑region restore and resilience settings applied (configurable via vault SKU and public network access).
-- One backup policy per region with configurable frequency (`Daily` / `Weekly` / `Both`), schedule time + timezone, Instant Restore retention, and retention tiers:
-	- Daily: Retention in days.
-	- Weekly: Retention in weeks; supports optional Monthly and Yearly tiers to mirror the Azure Portal shape.
-- One UAI per region, granted Backup Operator on the vault RG (scoped least‑privilege for backup operations).
-- Optional: Subscription‑scope DeployIfNotExists policy to auto‑enable backup for tagged VMs, using the UAI; remediation can target baseline or all regions.
+### 2. Key Capabilities
+- Multi‑region rollout (currently: `westeurope`, `northeurope`, `swedencentral`, `germanywestcentral`).
+- Daily, Weekly, or Both policy creation with automatic shape alignment to the Azure API.
+- Composite retention & tagging input (GitHub: `retentionProfile`, ADO: `retentionProfile` + separate tag params).
+- Instant Restore logic: Weekly (and weekly portion of Both) always uses 5 days; Daily portion clamps 1–5.
+- Optional monthly/yearly retention tiers (disabled by default; yearly enabled only when >0 supplied).
+- Automated policy‑based remediation to protect tagged VMs.
+- Role parameterization: choose `Contributor` (broad) or `Backup Contributor` (least‑privilege for backup) at dispatch/pipeline runtime.
 
-Key Policy Shape (Weekly)
-- Uses the Recovery Services API accepted weekly shape:
-	- `schedulePolicy.scheduleRunFrequency = Weekly`, `scheduleRunDays`, `scheduleRunTimes` as ISO with `Z` (UTC) like `2020-01-01T18:30:00Z`.
-	- `scheduleWeeklyFrequency = 0`.
-	- `instantRPDetails: {}`, `instantRpRetentionRangeInDays` set.
-	- `tieringPolicy.ArchivedRP.tieringMode = DoNotTier`.
-	- `timeZone` supplied (e.g., `UTC`).
-	- Optional `monthlySchedule` and `yearlySchedule` blocks aligned with the Portal’s “Weekly” retention format.
+### 3. Architecture Summary
+Per region resource group `rsv-rg-<region>` hosts:
+- Recovery Services Vault `rsv-<region>`
+- Backup Policy resources: daily and/or weekly variants (weekly includes optional monthly/yearly tiers via union logic in Bicep).
+- User Assigned Identity `uai-<region>` (used for policy remediation).
+- Role assignment on the RG for the UAI using selected role definition.
 
-CI/CD Workflows
-- GitHub Actions: `.github/workflows/github-action.yml`
-	- Builds Bicep for syntax check; deploys `main.bicep` at subscription scope with inputs; captures outputs; optionally deploys the auto‑enable policy.
-- Azure DevOps: `azure-pipelines.yml`
-	- Builds Bicep; deploys subscription scope with parameters; captures outputs; optional auto‑enable policy remediation across baseline or all regions.
-	- Uses a UI pipeline variable `subscriptionId` (not a YAML parameter) for the Azure subscription.
-  - Contains a dedicated remediation stage that runs after deploy when enabled, with an optional buffer wait.
+Global (subscription‑scope) components:
+- Subscription‑scope Bicep (`main.bicep`) orchestrates cross‑region deployment.
+- Optional DeployIfNotExists policy & assignment (subscription‑scope) for auto‑enable backup.
+- Audit‑only policy pipeline (Azure DevOps) for visibility without enforcement.
 
-Parameters and Inputs
-- Common policy inputs (surfaced to both CI systems):
-	- `backupFrequency` (`Daily` | `Weekly` | `Both`)
-	- `dailyRetentionDays`
-	- `weeklyRetentionDays` (converted to weeks)
-	- `weeklyBackupDaysOfWeek` (comma separated → array)
-	- `backupScheduleTime` / `backupScheduleTimeString` (HH:mm)
-	- `backupTimeZone` (e.g., `UTC`)
-	- `instantRestoreRetentionDays`
-	- `enableMonthlyRetention`, `monthlyRetentionMonths`, `monthlyWeeksOfMonth`, `monthlyDaysOfWeek`
-	- `enableYearlyRetention`, `yearlyRetentionYears`, `yearlyMonthsOfYear`, `yearlyWeeksOfMonth`, `yearlyDaysOfWeek`
-- Remediation inputs:
-	- `enableAutoRemediation`, `multiRegionAutoRemediation`, `policyBaselineRegion`, `vmTagName`, `vmTagValue`.
+### 4. GitHub Workflow Dispatch Inputs (`.github/workflows/github-test.yml`)
+- `subscriptionId`: Target subscription.
+- `deploymentLocation`: Metadata deployment location (e.g., `westeurope`).
+- `weeklyBackupDaysOfWeek`: Comma separated days (e.g., `Sunday,Wednesday`).
+- `retentionProfile`: `Daily|Weekly|Yearly|TagName|TagValue`. Example: `14|30|0|backup|true` (Yearly=0 disables yearly tier).
+- `backupFrequency`: `Daily` | `Weekly` | `Both`.
+- `backupScheduleTime`: Time of day (UTC HH:mm, e.g., `18:30`).
+- `backupTimeZone`: Time zone string (e.g., `UTC`).
+- `instantRestoreRetentionDays`: 1–5 (ignored for weekly; weekly forced to 5).
+- `remediationRole`: `Contributor` | `BackupContributor` (maps to GUID).
+- `enableAutoRemediation`: `true` to deploy & kick off remediation stage.
 
-Prerequisites
-- Azure (both CI systems)
-	- Permissions: Owner or (Contributor + User Access Administrator) at subscription scope.
-	- Resource providers: `Microsoft.RecoveryServices`, `Microsoft.Authorization`, `Microsoft.ManagedIdentity`, `Microsoft.PolicyInsights`.
-- GitHub Actions
-	- Secret `AZURE_CREDENTIALS` containing Service Principal JSON for `azure/login@v2` (or OIDC setup with `clientId`, `tenantId`, `subscriptionId`).
-- Azure DevOps
-	- Service connection with access to the target subscription.
-	- Define pipeline variable `subscriptionId` with your subscription GUID (Pipelines → Edit → Variables).
-	- Hosted agent `windows-latest` (pipeline installs Bicep if missing).
+Derived at runtime:
+- Tag name/value extracted from `retentionProfile` (positions 4 & 5).
+- Yearly enable flag auto‑computed (`Yearly > 0`).
 
-How to Run
-- GitHub Actions
-	1) Go to Actions → “Deploy Multi-Region VM Backup” → Run workflow.
-	2) Provide inputs or accept defaults (e.g., `backupFrequency`, `weeklyBackupDaysOfWeek`, `backupScheduleTime`, retention tiers).
-	3) Ensure `AZURE_CREDENTIALS` is configured in repository secrets.
-- Azure DevOps
-	1) Set the `subscriptionId` variable in the pipeline UI.
-	2) Queue a run; adjust YAML parameters like `backupFrequency`, weekly days string, schedule time, and retention.
-	3) Toggle `enableAutoRemediation` to deploy the policy and remediate tagged VMs.
+### 5. Azure DevOps Pipeline Parameters (`azure-pipelines.yml`)
+- `deploymentLocation`, `backupFrequency`, `weeklyBackupDaysOfWeekString`, `backupScheduleTimeString`, `backupTimeZone`.
+- `retentionProfile`: `Daily|Weekly|Yearly` (no tag embedding; tags still separate in ADO).
+- Tag parameters: `vmTagName`, `vmTagValue`.
+- Remediation control: `enableAutoRemediation`, `multiRegionAutoRemediation`, `policyBaselineRegion`, `waitMinutesBeforeRemediation`.
+- Role selection: `remediationRole` (same choices as GitHub).
+- Monthly/Yearly tier toggles and settings still available individually for advanced use (monthly disabled by default; yearly disabled when Yearly=0).
 
-Outputs
-- Both pipelines write `deployment-outputs.json`/`gh-deployment-outputs.json` with:
-	- `vaultIds`, `backupPolicyNames`, `userAssignedIdentityIds`, `userAssignedIdentityPrincipalIds`.
+Differences vs GitHub:
+- GitHub embeds tags inside `retentionProfile`; ADO uses separate tag parameters.
+- GitHub workflow sets outputs from step `deploy_backup`; ADO persists everything through inline Azure CLI script.
+- ADO includes optional multi‑region remediation toggle; GitHub currently remediates only baseline deployment location.
 
-File-by-File Guide
-- Root
-	- `main.bicep`: Subscription‑scope orchestration across the four regions.
-		- Creates per‑region RGs: `rsv-rg-<region>`.
-		- Modules: one RSV, one backup policy (Daily/Weekly/Both), one UAI, and RBAC (Backup Operator) per region.
-		- Parameters: schedule time(s), timezone, frequency, daily/weekly retention, Instant Restore retention, and optional Monthly/Yearly retention blocks.
-		- Outputs arrays of vault/policy/UAI identifiers.
-	- `azure-pipelines.yml`: Azure DevOps pipeline (build, deploy, outputs, optional remediation). Reads subscription from variable `$(subscriptionId)`.
-	- `azure-pipelines-audit.yml`: Optional pipeline to deploy an Audit‑only policy (no auto‑enable) using `scripts/Deploy-AuditPolicy.ps1`.
-	- `.github/workflows/github-action.yml`: GitHub workflow to deploy subscription‑scope Bicep and optional auto‑enable policy.
-	- `bicep-build/`: Compiled ARM JSON output used for syntax checks.
-- Modules (`modules/`)
-	- `recoveryVault.bicep`: Creates RSV with SKU and network settings.
-	- `backupPolicy.bicep`: VM policy resource(s):
-		- Daily policy (`2023-04-01`) with daily retention.
-		- Weekly policy (`2025-02-01`) with weekly retention, optional monthly/yearly tiers; uses ISO `Z` schedule times and includes `instantRPDetails`, `tieringPolicy`, `timeZone`.
-	- `userAssignedIdentity.bicep`: Creates per‑region UAI and outputs IDs.
-	- `roleAssignment.bicep`: Grants Backup Operator role to the UAI on the RG.
-	- `backupAutoEnablePolicy.bicep`: Policy definition/assignment for DeployIfNotExists to enable backup on tagged VMs.
-	- `backupAuditPolicy.bicep`: Audit‑only policy (no deployment). Useful for visibility at management group scope.
-	- `autoEnablePolicy.rule.json`: Parameterized rule JSON consumed by the auto‑enable policy module.
-- Scripts (`scripts/`)
-	- `Deploy-AutoEnablePolicySubscription.ps1`: Deploys the DeployIfNotExists policy at subscription scope and starts remediation; uses UAI identity located in the region’s vault RG by convention unless overridden.
-		- Requires the Recovery Services Vault and its resource group to already exist (provisioned by `main.bicep`).
-	- `Deploy-AuditPolicy.ps1`: Deploys an Audit policy (management group scope).
+### 6. Backup Policy Logic (`modules/backupPolicy.bicep`)
+- Daily policy (`2025-02-01` API) with `scheduleRunTimes` (ISO conversion) and daily retention.
+- Weekly policy (`2025-02-01` API) uses:
+  - `scheduleRunFrequency=Weekly`, `scheduleRunDays`, ISO run times.
+  - Weekly retention (days converted to weeks internally).
+  - Conditional monthly/yearly blocks built via `union()` only when enabled.
+  - Instant restore retention forced to 5.
+- Common fields: `policyType='V1'`, `instantRPDetails={}`, `tieringPolicy` set to `DoNotTier`.
 
+### 7. Role Selection
+`main.bicep` parameter `remediationRoleDefinitionId` defaults to Contributor GUID:
+- Contributor: `b24988ac-6180-42a0-ab88-20f7382dd24c`
+- Backup Contributor: `5e0bd9bd-7b93-4f78-a8b0-1f0f781f1493`
+Switch via dispatch/pipeline to enforce least privilege once validated.
 
-Troubleshooting
-- YAML errors in ADO: Ensure parameter blocks align; all list items start at the same column.
-- GitHub login failing: Configure `AZURE_CREDENTIALS` secret (SP JSON) or set up OIDC properly.
-- Policy validation errors (weekly): Use ISO `Z` times (e.g., `2020-01-01T18:30:00Z`), set `scheduleWeeklyFrequency: 0`, include `instantRPDetails: {}`, and `tieringPolicy.ArchivedRP.DoNotTier`.
-- Missing permissions: Assign `User Access Administrator` to allow role assignments, and ensure the service connection has sufficient scope.
-- No subscription in ADO: Set pipeline variable `subscriptionId` or rely on the service connection’s default subscription.
+### 8. DeployIfNotExists Auto‑Enable Policy
+- Definition & assignment in `modules/backupAutoEnablePolicy.bicep` using rule file `autoEnablePolicy.rule.json`.
+- Effect deploys protected item resource if VM with tag lacks backup.
+- Remediation started explicitly (GitHub second job, ADO remediation stage).
 
-Local Validation (optional)
+### 9. Repository Layout Summary
+| Path | Purpose |
+|------|---------|
+| `main.bicep` | Orchestrates multi‑region deployment & RBAC |
+| `modules/recoveryVault.bicep` | Creates RSV with SKU/network settings |
+| `modules/backupPolicy.bicep` | Daily/Weekly (Both) VM backup policies |
+| `modules/userAssignedIdentity.bicep` | Per‑region UAI resources |
+| `modules/roleAssignment.bicep` | Role assignment for UAI |
+| `modules/backupAutoEnablePolicy.bicep` | DeployIfNotExists enable backup policy |
+| `modules/backupAuditPolicy.bicep` | Audit-only policy variant |
+| `modules/autoEnablePolicy.rule.json` | Policy rule JSON template |
+| `.github/workflows/github-test.yml` | GitHub dispatch workflow (composite retention + tags) |
+| `azure-pipelines.yml` | ADO deploy & remediation pipeline |
+| `azure-pipelines-audit.yml` | ADO audit-only pipeline |
+| `scripts/*.ps1` | Helper scripts for policy deployment/remediation |
+
+### 10. Prerequisites
+Azure Subscription:
+- Permissions: Owner or (Contributor + User Access Administrator) for role assignments & policy remediation.
+- Providers registered: `Microsoft.RecoveryServices`, `Microsoft.ManagedIdentity`, `Microsoft.Authorization`, `Microsoft.PolicyInsights`.
+
+Identity & Access:
+- Service Principal or Managed Identity with sufficient scope (deployment + RBAC + policy).
+- Tags: Ensure VMs to be protected have tag name/value matching composite or pipeline params.
+
+Tools:
+- Azure CLI (GitHub runner & ADO agent) — Bicep installed automatically if missing.
+- PowerShell 7+ recommended locally for manual testing.
+
+### 11. Quick Start (GitHub Actions)
+1. Add secret for Azure login (e.g., `AZURE_CREDENTIALS`).
+2. Run the workflow with default `retentionProfile=14|30|0|backup|true` and `backupFrequency=Weekly`.
+3. (Optional) Enable remediation by setting `enableAutoRemediation=true`.
+4. Confirm policies and vaults: Recovery Services Vault > Backup Policies.
+
+### 12. Quick Start (Azure DevOps)
+1. Create/verify service connection.
+2. Set pipeline variable `subscriptionId`.
+3. Queue pipeline with desired parameters (e.g., `backupFrequency=Both`, `retentionProfile=14|30|0`).
+4. Enable `enableAutoRemediation=true` to start remediation stage after deploy.
+
+### 13. Local Test Commands
 ```powershell
 az account set --subscription <SUB_ID>
 az bicep build --file main.bicep
-az deployment sub create --name test-deploy --location westeurope --template-file main.bicep --parameters \
-	backupFrequency=Weekly \
-	weeklyRetentionDays=30 \
-	weeklyBackupDaysOfWeek='["Sunday","Wednesday"]' \
-	backupScheduleRunTimes='["18:30"]' \
-	backupTimeZone=UTC \
-	instantRestoreRetentionDays=2 \
-	enableMonthlyRetention=true \
-	monthlyRetentionMonths=60 \
-	monthlyWeeksOfMonth='["First"]' \
-	monthlyDaysOfWeek='["Sunday"]' \
-	enableYearlyRetention=true \
-	yearlyRetentionYears=10 \
-	yearlyMonthsOfYear='["January","February","March"]' \
-	yearlyWeeksOfMonth='["First"]' \
-	yearlyDaysOfWeek='["Sunday"]'
+az deployment sub create --name test-backup --location westeurope --template-file main.bicep --parameters \
+  backupFrequency=Weekly \
+  weeklyRetentionDays=30 \
+  weeklyBackupDaysOfWeek='["Sunday","Wednesday"]' \
+  backupScheduleRunTimes='["18:30"]' \
+  backupTimeZone=UTC \
+  instantRestoreRetentionDays=2 \
+  enableYearlyRetention=false \
+  enableMonthlyRetention=false \
+  remediationRoleDefinitionId=b24988ac-6180-42a0-ab88-20f7382dd24c
 ```
 
-Notes
-- The auto‑enable remediation uses a UAI on the policy assignment. The script derives the identity by convention: `/subscriptions/<sub>/resourceGroups/rsv-rg-<region>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-<region>`.
-- The `Deploy-AutoEnablePolicySubscription.ps1` script no longer includes any path to create resource groups or vaults. Run the main deployment first so `rsv-rg-<region>` and `rsv-<region>` exist.
+### 14. Troubleshooting
+- Weekly policy NO_PARAM errors: Remove yearly/monthly tiers (set Yearly=0) and verify ISO times; gradually re‑enable yearly.
+- RoleDefinitionDoesNotExist: Switch back to Contributor; confirm GUID for Backup Contributor is present (`az role definition list --name "Backup Contributor"`).
+- Remediation identity lacks permissions: Ensure role assignment succeeded and policy assignment identity’s UAI has Contributor/Backup Contributor on vault RG + target VM RG.
+- GitHub outputs missing tags: Confirm `retentionProfile` has exactly 5 segments.
+- Azure DevOps subscription not set: Define variable or rely on service connection default.
+
+### 15. Design Notes
+- Composite retention reduces input surface while preserving flexibility.
+- Yearly tier disabled by default to avoid early validation failures; enable by setting non‑zero Yearly value.
+- Weekly instant restore forced to 5 due to Azure platform requirement for weekly schedules.
+- Role parameterization allows gradual shift to least privilege once validated.
+
+### 16. Next Improvements (Future Roadmap)
+- Add optional monthly retention to composite profile.
+- Extend remediation to choose daily vs weekly policy when Both is deployed.
+- Add validation regex for time format & day names.
+- Integrate OIDC federation (GitHub) to remove SP secret.
+
+---
+If you encounter an unexpected deployment error, capture the failing nested deployment operations:
+```powershell
+az deployment operation group list --resource-group rsv-rg-westeurope --name backupPolicyModule-westeurope -o jsonc
+```
+Share the `statusMessage` snippet to iterate quickly.
+

@@ -57,6 +57,12 @@ param vaultSkuName string = 'RS0'
 @description('Recovery Services Vault SKU tier')
 param vaultSkuTier string = 'Standard'
 
+@description('Role Definition ID or GUID for remediation identity (e.g. Contributor or Backup Contributor)')
+param remediationRoleDefinitionId string = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
+// Common GUIDs:
+//   Contributor:        b24988ac-6180-42a0-ab88-20f7382dd24c
+//   Backup Contributor: 5e0bd9bd-7b93-4f78-a8b0-1f0f781f1493
+
 // Create resource groups in each region
 resource rgs 'Microsoft.Resources/resourceGroups@2021-04-01' = [for (region, i) in regions: {
   name: rgNames[i]
@@ -113,15 +119,14 @@ module uais './modules/userAssignedIdentity.bicep' = [for (region, i) in regions
   dependsOn: [vaults[i]]
 }]
 
-// Assign RBAC role to UAI on each RSV RG (Backup Contributor is required to enable protection)
-var backupContributorRoleId = '5e0bd9bd-7b93-4f78-a8b0-1f0f781f1493' // Built-in Backup Contributor role
+// Assign RBAC role to UAI on each RSV RG using provided remediationRoleDefinitionId
 module rbac './modules/roleAssignment.bicep' = [for (region, i) in regions: {
   name: 'roleAssignmentModule-${region}'
   scope: resourceGroup(rgNames[i])
   params: {
     principalId: uais[i].outputs.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: backupContributorRoleId
+    roleDefinitionId: remediationRoleDefinitionId
   }
   dependsOn: [uais[i]]
 }]

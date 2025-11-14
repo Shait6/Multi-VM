@@ -43,6 +43,13 @@ parameters:
   type: string
   default: '14|30|0'
   displayName: 'Retention Profile Daily|Weekly|Yearly (Yearly=0 disables yearly tier)'
+- name: remediationRole
+  type: string
+  values:
+    - Contributor
+    - BackupContributor
+  default: Contributor
+  displayName: 'Remediation Role (Contributor or BackupContributor)'
 - name: dailyRetentionDays
   type: number
   default: 14
@@ -169,6 +176,10 @@ stages:
           $instantClamped = [Math]::Min([Math]::Max($instantInput,1),5)
           if ("${{ parameters.backupFrequency }}" -eq 'Weekly') { $instantEffective = 5 } else { $instantEffective = $instantClamped }
           Write-Host "Instant restore retention effective=$instantEffective (input=$instantInput clamped=$instantClamped)"
+          # Map remediation role choice to GUID
+          $roleChoice = "${{ parameters.remediationRole }}"
+          $roleGuid = if ($roleChoice -eq 'BackupContributor') { '5e0bd9bd-7b93-4f78-a8b0-1f0f781f1493' } else { 'b24988ac-6180-42a0-ab88-20f7382dd24c' }
+          Write-Host "Selected remediation role: $roleChoice ($roleGuid)"
           $paramContent = @{
             backupFrequency        = @{ value = "${{ parameters.backupFrequency }}" }
             dailyRetentionDays     = @{ value = $dailyRetention }
@@ -186,6 +197,7 @@ stages:
             yearlyMonthsOfYear     = @{ value = ("${{ parameters.yearlyMonthsOfYear }}".Split(',') | ForEach-Object { $_.Trim() }) }
             yearlyWeeksOfMonth     = @{ value = ("${{ parameters.yearlyWeeksOfMonth }}".Split(',') | ForEach-Object { $_.Trim() }) }
             yearlyDaysOfWeek       = @{ value = ("${{ parameters.yearlyDaysOfWeek }}".Split(',') | ForEach-Object { $_.Trim() }) }
+            remediationRoleDefinitionId = @{ value = $roleGuid }
           }
           $paramContent | ConvertTo-Json -Depth 4 | Out-File bicep-params.json -Encoding utf8
           Write-Host "Starting deployment $deployName with backupFrequency=${{ parameters.backupFrequency }}"
