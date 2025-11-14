@@ -37,7 +37,7 @@ on:
         required: false
         default: 'UTC'
       instantRestoreRetentionDays:
-        description: 'Instant restore retention (days). Ignored when Weekly — forced to 5.'
+        description: 'Instant restore retention (days). Weekly or Both: weekly policy uses 5; daily uses this value (1–5).'
         required: false
         default: '2'
         type: choice
@@ -91,7 +91,9 @@ jobs:
           # Instant restore retention: force 5 when Weekly is selected
           $instant = [int]$env:INSTANT_RESTORE_DAYS
           if ($env:BACKUP_FREQUENCY -eq 'Weekly') { $instant = 5 }
-          echo "Computed instant restore retention days: $instant"
+          echo "Computed instant restore retention days (parameter): $instant"
+          if ($env:BACKUP_FREQUENCY -eq 'Weekly') { echo 'Weekly policy will use 5 days (enforced).'}
+          if ($env:BACKUP_FREQUENCY -eq 'Both')   { echo "Weekly policy will use 5 days; daily uses $instant day(s)." }
           $paramObj = @{
             backupFrequency        = @{ value = $env:BACKUP_FREQUENCY }
             dailyRetentionDays     = @{ value = [int]$env:DAILY_RETENTION }
