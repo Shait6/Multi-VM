@@ -23,9 +23,9 @@ on:
         required: false
         default: 'Sunday,Wednesday'
       retentionProfile:
-        description: 'Retention profile Daily|Weekly|Yearly (Yearly=0 disables yearly tier)'
+        description: 'Composite: Daily|Weekly|Yearly|TagName|TagValue (Yearly=0 disables yearly tier)'
         required: false
-        default: '14|30|10'
+        default: '14|30|10|backup|true'
       backupFrequency:
         description: 'Backup frequency'
         required: false
@@ -46,18 +46,13 @@ on:
         default: '2'
         type: choice
         options: ['1','2','3','4','5']
-      vmTagName:
-        description: 'Tag name used to select VMs for remediation'
-        required: false
-        default: 'backup'
-      vmTagValue:
-        description: 'Tag value used to select VMs for remediation'
-        required: false
-        default: 'true'
 
 jobs:
   deploy:
     runs-on: windows-latest
+    outputs:
+      vmTagName: ${{ steps.deploy_backup.outputs.vmTagName }}
+      vmTagValue: ${{ steps.deploy_backup.outputs.vmTagValue }}
     env:
       SUBSCRIPTION_ID: ${{ github.event.inputs.subscriptionId }}
       ENABLE_AUTO_REMEDIATION: ${{ github.event.inputs.enableAutoRemediation }}
@@ -65,8 +60,8 @@ jobs:
       WEEKLY_DAYS: ${{ github.event.inputs.weeklyBackupDaysOfWeek }}
       BACKUP_FREQUENCY: ${{ github.event.inputs.backupFrequency }}
       RETENTION_PROFILE: ${{ github.event.inputs.retentionProfile }}
-      VM_TAG_NAME: ${{ github.event.inputs.vmTagName }}
-      VM_TAG_VALUE: ${{ github.event.inputs.vmTagValue }}
+      VM_TAG_NAME: ''
+      VM_TAG_VALUE: ''
       BACKUP_TIME: ${{ github.event.inputs.backupScheduleTime }}
       BACKUP_TZ: ${{ github.event.inputs.backupTimeZone }}
       INSTANT_RESTORE_DAYS: ${{ github.event.inputs.instantRestoreRetentionDays }}
@@ -87,6 +82,7 @@ jobs:
           az bicep build --file main.bicep --outdir bicep-build
 
       - name: Deploy multi-region backup (subscription scope)
+        id: deploy_backup
         shell: pwsh
         run: |
           az account set --subscription "$env:SUBSCRIPTION_ID"
@@ -97,41 +93,49 @@ jobs:
           echo "Computed instant restore retention days (parameter): $instant"
           if ($env:BACKUP_FREQUENCY -eq 'Weekly') { echo 'Weekly policy will use 5 days (enforced).'}
           if ($env:BACKUP_FREQUENCY -eq 'Both')   { echo "Weekly policy will use 5 days; daily uses $instant day(s)." }
-          # Parse retention profile Daily|Weekly|Yearly
+          # Parse composite retention profile Daily|Weekly|Yearly|TagName|TagValue
           $profileParts = $env:RETENTION_PROFILE.Split('|')
-          if ($profileParts.Count -lt 2) { throw "Invalid retentionProfile format. Expected Daily|Weekly|Yearly (e.g. 14|30|10)." }
+          if ($profileParts.Count -lt 5) { throw "Invalid retentionProfile format. Expected Daily|Weekly|Yearly|TagName|TagValue (e.g. 14|30|10|backup|true)." }
           $dailyRetention  = [int]$profileParts[0]
           $weeklyRetention = [int]$profileParts[1]
-          $yearlyRetention = if ($profileParts.Count -ge 3) { [int]$profileParts[2] } else { 0 }
+          $yearlyRetention = [int]$profileParts[2]
+          $tagName         = $profileParts[3]
+          $tagValue        = $profileParts[4]
           $enableYearly = $yearlyRetention -gt 0
-          echo "Parsed retention profile -> Daily=$dailyRetention Weekly=$weeklyRetention Yearly=$yearlyRetention (enableYearly=$enableYearly)"
-          $paramObj = @{
-            backupFrequency        = @{ value = $env:BACKUP_FREQUENCY }
-            dailyRetentionDays     = @{ value = $dailyRetention }
-            weeklyRetentionDays    = @{ value = $weeklyRetention }
-            weeklyBackupDaysOfWeek = @{ value = $days }
-            backupScheduleRunTimes = @{ value = @($env:BACKUP_TIME) }
-            backupTimeZone         = @{ value = $env:BACKUP_TZ }
-            instantRestoreRetentionDays = @{ value = $instant }
-            enableMonthlyRetention = @{ value = $false }
-            enableYearlyRetention  = @{ value = $enableYearly }
-            yearlyRetentionYears   = @{ value = $yearlyRetention }
-          }
-          $paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8
-          $deployName = "gh-multi-region-$(Get-Date -Format yyyyMMddHHmmss)"
-          echo "Starting deployment $deployName with frequency=$env:BACKUP_FREQUENCY days=$env:WEEKLY_DAYS"
-          az deployment sub create --name $deployName --location "$env:DEPLOYMENT_LOCATION" --template-file main.bicep --parameters @main-params.json -o json > gh-deployment.json
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Subscription deployment failed with exit code $LASTEXITCODE"
-            if (Test-Path gh-deployment.json) { Get-Content gh-deployment.json | Write-Host }
-            exit $LASTEXITCODE
-          }
-          $outputs = az deployment sub show --name $deployName --query properties.outputs -o json | ConvertFrom-Json
-          $outputs | ConvertTo-Json -Depth 10 | Out-File gh-deployment-outputs.json -Encoding utf8
-          echo "Vaults: $($outputs.vaultIds.value -join ', ')"
-          echo "Policies: $($outputs.backupPolicyNames.value -join ', ')"
-          echo "UAIs: $($outputs.userAssignedIdentityIds.value -join ', ')"
-          echo "Principals: $($outputs.userAssignedIdentityPrincipalIds.value -join ', ')"
+          echo "Parsed profile -> Daily=$dailyRetention Weekly=$weeklyRetention Yearly=$yearlyRetention TagName=$tagName TagValue=$tagValue (enableYearly=$enableYearly)"
+          # Write tag outputs for next job
+            # Prepare parameters
+            $paramObj = @{
+              backupFrequency        = @{ value = $env:BACKUP_FREQUENCY }
+              dailyRetentionDays     = @{ value = $dailyRetention }
+              weeklyRetentionDays    = @{ value = $weeklyRetention }
+              weeklyBackupDaysOfWeek = @{ value = $days }
+              backupScheduleRunTimes = @{ value = @($env:BACKUP_TIME) }
+              backupTimeZone         = @{ value = $env:BACKUP_TZ }
+              instantRestoreRetentionDays = @{ value = $instant }
+              enableMonthlyRetention = @{ value = $false }
+              enableYearlyRetention  = @{ value = $enableYearly }
+              yearlyRetentionYears   = @{ value = $yearlyRetention }
+            }
+            $paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8
+            $deployName = "gh-multi-region-$(Get-Date -Format yyyyMMddHHmmss)"
+            echo "Starting deployment $deployName with frequency=$env:BACKUP_FREQUENCY days=$env:WEEKLY_DAYS"
+            az deployment sub create --name $deployName --location "$env:DEPLOYMENT_LOCATION" --template-file main.bicep --parameters @main-params.json -o json > gh-deployment.json
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Subscription deployment failed with exit code $LASTEXITCODE"
+              if (Test-Path gh-deployment.json) { Get-Content gh-deployment.json | Write-Host }
+              exit $LASTEXITCODE
+            }
+            $outputs = az deployment sub show --name $deployName --query properties.outputs -o json | ConvertFrom-Json
+            $outputs | ConvertTo-Json -Depth 10 | Out-File gh-deployment-outputs.json -Encoding utf8
+            echo "Vaults: $($outputs.vaultIds.value -join ', ')"
+            echo "Policies: $($outputs.backupPolicyNames.value -join ', ')"
+            echo "UAIs: $($outputs.userAssignedIdentityIds.value -join ', ')"
+            echo "Principals: $($outputs.userAssignedIdentityPrincipalIds.value -join ', ')"
+            # Set step outputs using GITHUB_OUTPUT
+            $outFile = $env:GITHUB_OUTPUT
+            "vmTagName=$tagName"  | Out-File -FilePath $outFile -Append
+            "vmTagValue=$tagValue" | Out-File -FilePath $outFile -Append
 
   remediate:
     if: ${{ github.event.inputs.enableAutoRemediation == 'true' }}
@@ -140,8 +144,8 @@ jobs:
     env:
       SUBSCRIPTION_ID: ${{ github.event.inputs.subscriptionId }}
       DEPLOYMENT_LOCATION: ${{ github.event.inputs.deploymentLocation }}
-      VM_TAG_NAME: ${{ github.event.inputs.vmTagName }}
-      VM_TAG_VALUE: ${{ github.event.inputs.vmTagValue }}
+      VM_TAG_NAME: ${{ needs.deploy.outputs.vmTagName }}
+      VM_TAG_VALUE: ${{ needs.deploy.outputs.vmTagValue }}
       WAIT_MINUTES: '5'
     steps:
       - name: Checkout

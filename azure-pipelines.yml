@@ -39,6 +39,10 @@ parameters:
     - Both
   default: Daily
   displayName: 'Backup Frequency'
+- name: retentionProfile
+  type: string
+  default: '14|30|10'
+  displayName: 'Retention Profile Daily|Weekly|Yearly (Yearly=0 disables yearly tier)'
 - name: dailyRetentionDays
   type: number
   default: 14
@@ -151,20 +155,34 @@ stages:
           $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
           $weeklyDays = "${{ parameters.weeklyBackupDaysOfWeekString }}".Split(',') | ForEach-Object { $_.Trim() }
           $runTimes = @("${{ parameters.backupScheduleTimeString }}")
+          # Parse retentionProfile Daily|Weekly|Yearly
+          $profileRaw = "${{ parameters.retentionProfile }}"
+          $profileParts = $profileRaw.Split('|')
+          if ($profileParts.Count -lt 2) { throw "Invalid retentionProfile format '$profileRaw'. Expected Daily|Weekly|Yearly (e.g. 14|30|10)." }
+          $dailyRetention  = [int]$profileParts[0]
+          $weeklyRetention = [int]$profileParts[1]
+          $yearlyRetention = if ($profileParts.Count -ge 3) { [int]$profileParts[2] } else { 0 }
+          $enableYearly = $yearlyRetention -gt 0
+          Write-Host "Parsed retention profile => Daily=$dailyRetention Weekly=$weeklyRetention Yearly=$yearlyRetention EnableYearly=$enableYearly"
+          # Instant restore rules: Weekly frequency forces 5 days; Daily/Both clamp to 1..5
+          $instantInput = [int]${{ parameters.instantRestoreRetentionDays }}
+          $instantClamped = [Math]::Min([Math]::Max($instantInput,1),5)
+          if ("${{ parameters.backupFrequency }}" -eq 'Weekly') { $instantEffective = 5 } else { $instantEffective = $instantClamped }
+          Write-Host "Instant restore retention effective=$instantEffective (input=$instantInput clamped=$instantClamped)"
           $paramContent = @{
             backupFrequency        = @{ value = "${{ parameters.backupFrequency }}" }
-            dailyRetentionDays     = @{ value = ${{ parameters.dailyRetentionDays }} }
-            weeklyRetentionDays    = @{ value = ${{ parameters.weeklyRetentionDays }} }
+            dailyRetentionDays     = @{ value = $dailyRetention }
+            weeklyRetentionDays    = @{ value = $weeklyRetention }
             weeklyBackupDaysOfWeek = @{ value = $weeklyDays }
             backupScheduleRunTimes = @{ value = $runTimes }
             backupTimeZone         = @{ value = "${{ parameters.backupTimeZone }}" }
-            instantRestoreRetentionDays = @{ value = ${{ parameters.instantRestoreRetentionDays }} }
+            instantRestoreRetentionDays = @{ value = $instantEffective }
             enableMonthlyRetention = @{ value = ('${{ parameters.enableMonthlyRetention }}' -eq 'true') }
             monthlyRetentionMonths = @{ value = ${{ parameters.monthlyRetentionMonths }} }
             monthlyWeeksOfMonth    = @{ value = ("${{ parameters.monthlyWeeksOfMonth }}".Split(',') | ForEach-Object { $_.Trim() }) }
             monthlyDaysOfWeek      = @{ value = ("${{ parameters.monthlyDaysOfWeek }}".Split(',') | ForEach-Object { $_.Trim() }) }
-            enableYearlyRetention  = @{ value = ('${{ parameters.enableYearlyRetention }}' -eq 'true') }
-            yearlyRetentionYears   = @{ value = ${{ parameters.yearlyRetentionYears }} }
+            enableYearlyRetention  = @{ value = $enableYearly }
+            yearlyRetentionYears   = @{ value = $yearlyRetention }
             yearlyMonthsOfYear     = @{ value = ("${{ parameters.yearlyMonthsOfYear }}".Split(',') | ForEach-Object { $_.Trim() }) }
             yearlyWeeksOfMonth     = @{ value = ("${{ parameters.yearlyWeeksOfMonth }}".Split(',') | ForEach-Object { $_.Trim() }) }
             yearlyDaysOfWeek       = @{ value = ("${{ parameters.yearlyDaysOfWeek }}".Split(',') | ForEach-Object { $_.Trim() }) }
