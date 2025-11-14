@@ -38,8 +38,10 @@ resource existingVault 'Microsoft.RecoveryServices/vaults@2025-02-01' existing =
 var weeklyRetentionWeeks = int((weeklyRetentionDays + 6) / 7)
 // Convert times to ISO 8601 Z (as seen in working templates)
 var isoRunTimes = [for t in backupScheduleRunTimes: (contains(t, 'T') ? t : '2016-09-21T${t}:00Z')]
+// Clamp daily instant restore to 1..5; weekly must be 5 (enforced below)
+var dailyInstantRestoreDays = min(max(instantRestoreRetentionDays, 1), 5)
 
-// DAILY POLICY aligned to 2025-02-01 (portal export shape)
+// DAILY POLICY
 resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@2025-02-01' = if (backupFrequency == 'Daily' || backupFrequency == 'Both') {
   parent: existingVault
   name: backupFrequency == 'Both' ? '${backupPolicyName}-daily' : backupPolicyName
@@ -69,12 +71,12 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
         durationType: 'Invalid'
       }
     }
-    instantRpRetentionRangeInDays: instantRestoreRetentionDays
+    instantRpRetentionRangeInDays: dailyInstantRestoreDays
     timeZone: backupTimeZone
   }
 }
 
-// WEEKLY POLICY aligned to 2025-02-01 (portal export shape)
+// WEEKLY POLICY 
 resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@2025-02-01' = if (backupFrequency == 'Weekly' || backupFrequency == 'Both') {
   parent: existingVault
   name: backupFrequency == 'Both' ? '${backupPolicyName}-weekly' : backupPolicyName
@@ -131,7 +133,8 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
         durationType: 'Invalid'
       }
     }
-    instantRpRetentionRangeInDays: instantRestoreRetentionDays
+    // Azure requires 5 days when schedule is Weekly
+    instantRpRetentionRangeInDays: 5
     timeZone: backupTimeZone
   }
 }
@@ -160,11 +163,3 @@ output _unusedParams object = {
   yearlyWeeksOfMonth: yearlyWeeksOfMonth
   yearlyDaysOfWeek: yearlyDaysOfWeek
 }
-
-// Notes / recommendations:
-// - Avoid setting object properties to null (e.g., scheduleRunDays: null). Use an empty array or omit the property.
-// - Ensure the API versions (2025-02-01 and 2023-04-01 used above) are correct/available in your subscription/region.
-// - Validate the expected formats for backupScheduleRunTimes and retentionTimes against the Recovery Services API docs.
-//   Some APIs require full ISO datetimes while others accept only time-of-day strings (e.g., "02:30"). Provide examples to users.
-// - If you want stronger validation, add allowed/regex checks for the run times and weekly day names.
-// - If you see deployment-time validation errors, paste the exact error and I can help iterate further.
