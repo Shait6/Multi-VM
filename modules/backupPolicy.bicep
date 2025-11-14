@@ -125,9 +125,10 @@ param backupTimeZone string = 'UTC'
 var weeklyRetentionWeeks = int((weeklyRetentionDays + 6) / 7)
 
 // Create daily policy when requested (or when 'Both' selected)
-resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@2023-04-01' = if (backupFrequency == 'Daily' || backupFrequency == 'Both') {
+resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@2019-05-13' = if (backupFrequency == 'Daily' || backupFrequency == 'Both') {
   parent: existingVault
   name: backupFrequency == 'Both' ? '${backupPolicyName}-daily' : backupPolicyName
+  location: resourceGroup().location
   properties: {
     backupManagementType: 'AzureIaasVM'
     instantRpRetentionRangeInDays: instantRestoreRetentionDays
@@ -151,9 +152,10 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
 }
 
 // Create weekly policy when requested (or when 'Both' selected)
-resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@2025-02-01' = if (backupFrequency == 'Weekly' || backupFrequency == 'Both') {
+resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@2019-05-13' = if (backupFrequency == 'Weekly' || backupFrequency == 'Both') {
   parent: existingVault
   name: backupFrequency == 'Both' ? '${backupPolicyName}-weekly' : backupPolicyName
+  location: resourceGroup().location
   properties: {
     backupManagementType: 'AzureIaasVM'
     instantRpRetentionRangeInDays: instantRestoreRetentionDays
