@@ -175,35 +175,39 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
           durationType: 'Weeks'
         }
       }
-      ...(enableMonthlyRetention ? {
-        monthlySchedule: {
-          retentionScheduleFormatType: monthlyRetentionScheduleFormat
-          retentionScheduleWeekly: {
-            daysOfTheWeek: monthlyDaysOfWeek
-            weeksOfTheMonth: monthlyWeeksOfMonth
-          }
-          retentionTimes: backupScheduleRunTimes
-          retentionDuration: {
-            count: monthlyRetentionMonths
-            durationType: 'Months'
-          }
+      monthlySchedule: {
+        retentionScheduleFormatType: monthlyRetentionScheduleFormat
+        retentionScheduleWeekly: {
+          daysOfTheWeek: monthlyDaysOfWeek
+          weeksOfTheMonth: monthlyWeeksOfMonth
         }
-      } : {})
-      ...(enableYearlyRetention ? {
-        yearlySchedule: {
-          retentionScheduleFormatType: yearlyRetentionScheduleFormat
-          monthsOfYear: yearlyMonthsOfYear
-          retentionScheduleWeekly: {
-            daysOfTheWeek: yearlyDaysOfWeek
-            weeksOfTheMonth: yearlyWeeksOfMonth
-          }
-          retentionTimes: backupScheduleRunTimes
-          retentionDuration: {
-            count: yearlyRetentionYears
-            durationType: 'Years'
-          }
+        retentionTimes: backupScheduleRunTimes
+        retentionDuration: {
+          count: monthlyRetentionMonths
+          durationType: 'Months'
         }
-      } : {})
+      }
+      yearlySchedule: {
+        retentionScheduleFormatType: yearlyRetentionScheduleFormat
+        monthsOfYear: yearlyMonthsOfYear
+        retentionScheduleDaily: {
+          daysOfTheMonth: [
+            {
+              date: 1
+              isLast: false
+            }
+          ]
+        }
+        retentionScheduleWeekly: {
+          daysOfTheWeek: yearlyDaysOfWeek
+          weeksOfTheMonth: yearlyWeeksOfMonth
+        }
+        retentionTimes: backupScheduleRunTimes
+        retentionDuration: {
+          count: yearlyRetentionYears
+          durationType: 'Years'
+        }
+      }
     }
     timeZone: backupTimeZone
   }
@@ -226,6 +230,10 @@ output backupPolicyNames array = concat(
   (dailyPolicyName != '') ? [dailyPolicyName] : [],
   (weeklyPolicyName != '') ? [weeklyPolicyName] : []
 )
+
+// Expose flags so parameters are considered used without affecting behavior
+output monthlyRetentionEnabled bool = enableMonthlyRetention
+output yearlyRetentionEnabled bool = enableYearlyRetention
 
 // Notes / recommendations:
 // - Avoid setting object properties to null (e.g., scheduleRunDays: null). Use an empty array or omit the property.
