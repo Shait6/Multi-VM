@@ -10,6 +10,8 @@ on:
         description: 'Enable Auto-Remediation (DeployIfNotExists)'
         required: false
         default: 'false'
+        type: choice
+        options: ['true','false']
       deploymentLocation:
         description: 'Subscription deployment metadata location'
         required: false
