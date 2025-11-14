@@ -35,9 +35,11 @@ on:
         required: false
         default: 'UTC'
       instantRestoreRetentionDays:
-        description: 'Instant restore retention (days)'
+        description: 'Instant restore retention (days). Ignored when Weekly — forced to 5.'
         required: false
         default: '2'
+        type: choice
+        options: ['1','2','3','4','5']
       vmTagName:
         description: 'Tag name used to select VMs for remediation'
         required: false
@@ -87,6 +89,7 @@ jobs:
           # Instant restore retention: force 5 when Weekly is selected
           $instant = [int]$env:INSTANT_RESTORE_DAYS
           if ($env:BACKUP_FREQUENCY -eq 'Weekly') { $instant = 5 }
+          echo "Computed instant restore retention days: $instant"
           $paramObj = @{
             backupFrequency        = @{ value = $env:BACKUP_FREQUENCY }
             dailyRetentionDays     = @{ value = [int]$env:DAILY_RETENTION }
