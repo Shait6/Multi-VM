@@ -39,14 +39,14 @@ var weeklyRetentionWeeks = int((weeklyRetentionDays + 6) / 7)
 // Convert times to ISO 8601 Z (as seen in working templates)
 var isoRunTimes = [for t in backupScheduleRunTimes: (contains(t, 'T') ? t : '2016-09-21T${t}:00Z')]
 
-// DAILY POLICY (minimal – matches working reference)
-resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@2023-04-01' = if (backupFrequency == 'Daily' || backupFrequency == 'Both') {
+// DAILY POLICY aligned to 2025-02-01 (portal export shape)
+resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@2025-02-01' = if (backupFrequency == 'Daily' || backupFrequency == 'Both') {
   parent: existingVault
   name: backupFrequency == 'Both' ? '${backupPolicyName}-daily' : backupPolicyName
-  location: resourceGroup().location
   properties: {
     backupManagementType: 'AzureIaasVM'
-    instantRpRetentionRangeInDays: instantRestoreRetentionDays
+    policyType: 'V1'
+    instantRPDetails: {}
     schedulePolicy: {
       schedulePolicyType: 'SimpleSchedulePolicy'
       scheduleRunFrequency: 'Daily'
@@ -62,23 +62,31 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
         }
       }
     }
+    tieringPolicy: {
+      ArchivedRP: {
+        tieringMode: 'DoNotTier'
+        duration: 0
+        durationType: 'Invalid'
+      }
+    }
+    instantRpRetentionRangeInDays: instantRestoreRetentionDays
     timeZone: backupTimeZone
   }
 }
 
-// WEEKLY POLICY (minimal – matches working reference)
-resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@2019-05-13' = if (backupFrequency == 'Weekly' || backupFrequency == 'Both') {
+// WEEKLY POLICY aligned to 2025-02-01 (portal export shape)
+resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@2025-02-01' = if (backupFrequency == 'Weekly' || backupFrequency == 'Both') {
   parent: existingVault
   name: backupFrequency == 'Both' ? '${backupPolicyName}-weekly' : backupPolicyName
-  location: resourceGroup().location
   properties: {
     backupManagementType: 'AzureIaasVM'
-    instantRpRetentionRangeInDays: instantRestoreRetentionDays
+    policyType: 'V1'
+    instantRPDetails: {}
     schedulePolicy: {
       schedulePolicyType: 'SimpleSchedulePolicy'
       scheduleRunFrequency: 'Weekly'
-      scheduleRunTimes: isoRunTimes
       scheduleRunDays: weeklyBackupDaysOfWeek
+      scheduleRunTimes: isoRunTimes
     }
     retentionPolicy: {
       retentionPolicyType: 'LongTermRetentionPolicy'
@@ -92,14 +100,6 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
       }
       monthlySchedule: {
         retentionScheduleFormatType: 'Weekly'
-        retentionScheduleDaily: {
-          daysOfTheMonth: [
-            {
-              date: 1
-              isLast: false
-            }
-          ]
-        }
         retentionScheduleWeekly: {
           daysOfTheWeek: monthlyDaysOfWeek
           weeksOfTheMonth: monthlyWeeksOfMonth
@@ -113,14 +113,6 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
       yearlySchedule: {
         retentionScheduleFormatType: 'Weekly'
         monthsOfYear: yearlyMonthsOfYear
-        retentionScheduleDaily: {
-          daysOfTheMonth: [
-            {
-              date: 1
-              isLast: false
-            }
-          ]
-        }
         retentionScheduleWeekly: {
           daysOfTheWeek: yearlyDaysOfWeek
           weeksOfTheMonth: yearlyWeeksOfMonth
@@ -132,6 +124,14 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
         }
       }
     }
+    tieringPolicy: {
+      ArchivedRP: {
+        tieringMode: 'DoNotTier'
+        duration: 0
+        durationType: 'Invalid'
+      }
+    }
+    instantRpRetentionRangeInDays: instantRestoreRetentionDays
     timeZone: backupTimeZone
   }
 }
