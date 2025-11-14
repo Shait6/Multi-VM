@@ -36,6 +36,8 @@ resource existingVault 'Microsoft.RecoveryServices/vaults@2025-02-01' existing =
 
 // Derived values
 var weeklyRetentionWeeks = int((weeklyRetentionDays + 6) / 7)
+// Convert times to ISO 8601 Z (as seen in working templates)
+var isoRunTimes = [for t in backupScheduleRunTimes: (contains(t, 'T') ? t : '2016-09-21T${t}:00Z')]
 
 // DAILY POLICY (minimal – matches working reference)
 resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@2023-04-01' = if (backupFrequency == 'Daily' || backupFrequency == 'Both') {
@@ -48,12 +50,12 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
     schedulePolicy: {
       schedulePolicyType: 'SimpleSchedulePolicy'
       scheduleRunFrequency: 'Daily'
-      scheduleRunTimes: backupScheduleRunTimes
+      scheduleRunTimes: isoRunTimes
     }
     retentionPolicy: {
       retentionPolicyType: 'LongTermRetentionPolicy'
       dailySchedule: {
-        retentionTimes: backupScheduleRunTimes
+        retentionTimes: isoRunTimes
         retentionDuration: {
           count: dailyRetentionDays
           durationType: 'Days'
@@ -75,17 +77,58 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
     schedulePolicy: {
       schedulePolicyType: 'SimpleSchedulePolicy'
       scheduleRunFrequency: 'Weekly'
-      scheduleRunTimes: backupScheduleRunTimes
+      scheduleRunTimes: isoRunTimes
       scheduleRunDays: weeklyBackupDaysOfWeek
     }
     retentionPolicy: {
       retentionPolicyType: 'LongTermRetentionPolicy'
       weeklySchedule: {
         daysOfTheWeek: weeklyBackupDaysOfWeek
-        retentionTimes: backupScheduleRunTimes
+        retentionTimes: isoRunTimes
         retentionDuration: {
           count: weeklyRetentionWeeks
           durationType: 'Weeks'
+        }
+      }
+      monthlySchedule: {
+        retentionScheduleFormatType: 'Weekly'
+        retentionScheduleDaily: {
+          daysOfTheMonth: [
+            {
+              date: 1
+              isLast: false
+            }
+          ]
+        }
+        retentionScheduleWeekly: {
+          daysOfTheWeek: monthlyDaysOfWeek
+          weeksOfTheMonth: monthlyWeeksOfMonth
+        }
+        retentionTimes: isoRunTimes
+        retentionDuration: {
+          count: monthlyRetentionMonths
+          durationType: 'Months'
+        }
+      }
+      yearlySchedule: {
+        retentionScheduleFormatType: 'Weekly'
+        monthsOfYear: yearlyMonthsOfYear
+        retentionScheduleDaily: {
+          daysOfTheMonth: [
+            {
+              date: 1
+              isLast: false
+            }
+          ]
+        }
+        retentionScheduleWeekly: {
+          daysOfTheWeek: yearlyDaysOfWeek
+          weeksOfTheMonth: yearlyWeeksOfMonth
+        }
+        retentionTimes: isoRunTimes
+        retentionDuration: {
+          count: yearlyRetentionYears
+          durationType: 'Years'
         }
       }
     }
