@@ -25,7 +25,7 @@ on:
       retentionProfile:
         description: 'Composite: Daily|Weekly|Yearly|TagName|TagValue (Yearly=0 disables yearly tier)'
         required: false
-        default: '14|30|10|backup|true'
+        default: '14|30|0|backup|true'
       backupFrequency:
         description: 'Backup frequency'
         required: false
