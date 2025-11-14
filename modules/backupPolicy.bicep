@@ -34,21 +34,28 @@ param yearlyDaysOfWeek array = ['Sunday']
 // Existing vault reference
 resource existingVault 'Microsoft.RecoveryServices/vaults@2025-02-01' existing = { name: vaultName }
 
+// Derived values
+var weeklyRetentionWeeks = int((weeklyRetentionDays + 6) / 7)
+// Convert HH:mm entries to ISO8601 UTC format (service often expects full datetime)
+var isoRunTimes = [for t in backupScheduleRunTimes: '2020-01-01T${t}:00Z']
+
 // DAILY POLICY (minimal – matches working reference)
 resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@2023-04-01' = if (backupFrequency == 'Daily' || backupFrequency == 'Both') {
   parent: existingVault
   name: backupFrequency == 'Both' ? '${backupPolicyName}-daily' : backupPolicyName
+  location: resourceGroup().location
   properties: {
     backupManagementType: 'AzureIaasVM'
+    instantRpRetentionRangeInDays: instantRestoreRetentionDays
     schedulePolicy: {
       schedulePolicyType: 'SimpleSchedulePolicy'
       scheduleRunFrequency: 'Daily'
-      scheduleRunTimes: backupScheduleRunTimes
+      scheduleRunTimes: isoRunTimes
     }
     retentionPolicy: {
       retentionPolicyType: 'LongTermRetentionPolicy'
       dailySchedule: {
-        retentionTimes: backupScheduleRunTimes
+        retentionTimes: isoRunTimes
         retentionDuration: {
           count: dailyRetentionDays
           durationType: 'Days'
@@ -63,21 +70,24 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
 resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@2023-04-01' = if (backupFrequency == 'Weekly' || backupFrequency == 'Both') {
   parent: existingVault
   name: backupFrequency == 'Both' ? '${backupPolicyName}-weekly' : backupPolicyName
+  location: resourceGroup().location
   properties: {
     backupManagementType: 'AzureIaasVM'
+    instantRpRetentionRangeInDays: instantRestoreRetentionDays
     schedulePolicy: {
       schedulePolicyType: 'SimpleSchedulePolicy'
       scheduleRunFrequency: 'Weekly'
-      scheduleRunTimes: backupScheduleRunTimes
+      scheduleRunTimes: isoRunTimes
       scheduleRunDays: weeklyBackupDaysOfWeek
     }
     retentionPolicy: {
       retentionPolicyType: 'LongTermRetentionPolicy'
       weeklySchedule: {
-        retentionTimes: backupScheduleRunTimes
+        daysOfTheWeek: weeklyBackupDaysOfWeek
+        retentionTimes: isoRunTimes
         retentionDuration: {
-          count: weeklyRetentionDays
-          durationType: 'Days'
+          count: weeklyRetentionWeeks
+          durationType: 'Weeks'
         }
       }
     }
