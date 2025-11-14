@@ -150,9 +150,6 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
           durationType: 'Days'
         }
       }
-      monthlySchedule: null
-      weeklySchedule: null
-      yearlySchedule: null
     }
     timeZone: backupTimeZone
   }

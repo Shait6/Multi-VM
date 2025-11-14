@@ -23,7 +23,7 @@ on:
       backupFrequency:
         description: 'Backup frequency'
         required: false
-        default: 'Daily'
+        default: 'Weekly'
         type: choice
         options: ['Daily','Weekly','Both']
       backupScheduleTime:
