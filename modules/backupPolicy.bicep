@@ -175,31 +175,35 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
           durationType: 'Weeks'
         }
       }
-      monthlySchedule: enableMonthlyRetention ? {
-        retentionScheduleFormatType: monthlyRetentionScheduleFormat
-        retentionScheduleWeekly: {
-          daysOfTheWeek: monthlyDaysOfWeek
-          weeksOfTheMonth: monthlyWeeksOfMonth
+      ...(enableMonthlyRetention ? {
+        monthlySchedule: {
+          retentionScheduleFormatType: monthlyRetentionScheduleFormat
+          retentionScheduleWeekly: {
+            daysOfTheWeek: monthlyDaysOfWeek
+            weeksOfTheMonth: monthlyWeeksOfMonth
+          }
+          retentionTimes: backupScheduleRunTimes
+          retentionDuration: {
+            count: monthlyRetentionMonths
+            durationType: 'Months'
+          }
         }
-        retentionTimes: backupScheduleRunTimes
-        retentionDuration: {
-          count: monthlyRetentionMonths
-          durationType: 'Months'
+      } : {})
+      ...(enableYearlyRetention ? {
+        yearlySchedule: {
+          retentionScheduleFormatType: yearlyRetentionScheduleFormat
+          monthsOfYear: yearlyMonthsOfYear
+          retentionScheduleWeekly: {
+            daysOfTheWeek: yearlyDaysOfWeek
+            weeksOfTheMonth: yearlyWeeksOfMonth
+          }
+          retentionTimes: backupScheduleRunTimes
+          retentionDuration: {
+            count: yearlyRetentionYears
+            durationType: 'Years'
+          }
         }
-      } : null
-      yearlySchedule: enableYearlyRetention ? {
-        retentionScheduleFormatType: yearlyRetentionScheduleFormat
-        monthsOfYear: yearlyMonthsOfYear
-        retentionScheduleWeekly: {
-          daysOfTheWeek: yearlyDaysOfWeek
-          weeksOfTheMonth: yearlyWeeksOfMonth
-        }
-        retentionTimes: backupScheduleRunTimes
-        retentionDuration: {
-          count: yearlyRetentionYears
-          durationType: 'Years'
-        }
-      } : null
+      } : {})
     }
     timeZone: backupTimeZone
   }
