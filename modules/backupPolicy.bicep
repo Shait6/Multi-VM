@@ -41,6 +41,50 @@ var isoRunTimes = [for t in backupScheduleRunTimes: (contains(t, 'T') ? t : '201
 // Clamp daily instant restore to 1..5; weekly must be 5 (enforced below)
 var dailyInstantRestoreDays = min(max(instantRestoreRetentionDays, 1), 5)
 
+// Optional schedule objects for weekly policy retention tiers
+var monthlyScheduleObj = enableMonthlyRetention ? {
+  monthlySchedule: {
+    retentionScheduleFormatType: 'Weekly'
+    retentionScheduleWeekly: {
+      daysOfTheWeek: monthlyDaysOfWeek
+      weeksOfTheMonth: monthlyWeeksOfMonth
+    }
+    retentionTimes: isoRunTimes
+    retentionDuration: {
+      count: monthlyRetentionMonths
+      durationType: 'Months'
+    }
+  }
+} : {}
+
+var yearlyScheduleObj = enableYearlyRetention ? {
+  yearlySchedule: {
+    retentionScheduleFormatType: 'Weekly'
+    monthsOfYear: yearlyMonthsOfYear
+    retentionScheduleWeekly: {
+      daysOfTheWeek: yearlyDaysOfWeek
+      weeksOfTheMonth: yearlyWeeksOfMonth
+    }
+    retentionTimes: isoRunTimes
+    retentionDuration: {
+      count: yearlyRetentionYears
+      durationType: 'Years'
+    }
+  }
+} : {}
+
+var retentionPolicyWeekly = union({
+  retentionPolicyType: 'LongTermRetentionPolicy'
+  weeklySchedule: {
+    daysOfTheWeek: weeklyBackupDaysOfWeek
+    retentionTimes: isoRunTimes
+    retentionDuration: {
+      count: weeklyRetentionWeeks
+      durationType: 'Weeks'
+    }
+  }
+}, monthlyScheduleObj, yearlyScheduleObj)
+
 // DAILY POLICY
 resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@2025-02-01' = if (backupFrequency == 'Daily' || backupFrequency == 'Both') {
   parent: existingVault
@@ -90,42 +134,7 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
       scheduleRunDays: weeklyBackupDaysOfWeek
       scheduleRunTimes: isoRunTimes
     }
-    retentionPolicy: {
-      retentionPolicyType: 'LongTermRetentionPolicy'
-      weeklySchedule: {
-        daysOfTheWeek: weeklyBackupDaysOfWeek
-        retentionTimes: isoRunTimes
-        retentionDuration: {
-          count: weeklyRetentionWeeks
-          durationType: 'Weeks'
-        }
-      }
-      monthlySchedule: {
-        retentionScheduleFormatType: 'Weekly'
-        retentionScheduleWeekly: {
-          daysOfTheWeek: monthlyDaysOfWeek
-          weeksOfTheMonth: monthlyWeeksOfMonth
-        }
-        retentionTimes: isoRunTimes
-        retentionDuration: {
-          count: monthlyRetentionMonths
-          durationType: 'Months'
-        }
-      }
-      yearlySchedule: {
-        retentionScheduleFormatType: 'Weekly'
-        monthsOfYear: yearlyMonthsOfYear
-        retentionScheduleWeekly: {
-          daysOfTheWeek: yearlyDaysOfWeek
-          weeksOfTheMonth: yearlyWeeksOfMonth
-        }
-        retentionTimes: isoRunTimes
-        retentionDuration: {
-          count: yearlyRetentionYears
-          durationType: 'Years'
-        }
-      }
-    }
+    retentionPolicy: retentionPolicyWeekly
     tieringPolicy: {
       ArchivedRP: {
         tieringMode: 'DoNotTier'

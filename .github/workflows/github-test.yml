@@ -22,6 +22,10 @@ on:
         description: 'Weekly backup days (comma separated)'
         required: false
         default: 'Sunday,Wednesday'
+      retentionProfile:
+        description: 'Retention profile Daily|Weekly|Yearly (Yearly=0 disables yearly tier)'
+        required: false
+        default: '14|30|10'
       backupFrequency:
         description: 'Backup frequency'
         required: false
@@ -60,8 +64,7 @@ jobs:
       DEPLOYMENT_LOCATION: ${{ github.event.inputs.deploymentLocation }}
       WEEKLY_DAYS: ${{ github.event.inputs.weeklyBackupDaysOfWeek }}
       BACKUP_FREQUENCY: ${{ github.event.inputs.backupFrequency }}
-      DAILY_RETENTION: '14'
-      WEEKLY_RETENTION: '30'
+      RETENTION_PROFILE: ${{ github.event.inputs.retentionProfile }}
       VM_TAG_NAME: ${{ github.event.inputs.vmTagName }}
       VM_TAG_VALUE: ${{ github.event.inputs.vmTagValue }}
       BACKUP_TIME: ${{ github.event.inputs.backupScheduleTime }}
@@ -94,16 +97,25 @@ jobs:
           echo "Computed instant restore retention days (parameter): $instant"
           if ($env:BACKUP_FREQUENCY -eq 'Weekly') { echo 'Weekly policy will use 5 days (enforced).'}
           if ($env:BACKUP_FREQUENCY -eq 'Both')   { echo "Weekly policy will use 5 days; daily uses $instant day(s)." }
+          # Parse retention profile Daily|Weekly|Yearly
+          $profileParts = $env:RETENTION_PROFILE.Split('|')
+          if ($profileParts.Count -lt 2) { throw "Invalid retentionProfile format. Expected Daily|Weekly|Yearly (e.g. 14|30|10)." }
+          $dailyRetention  = [int]$profileParts[0]
+          $weeklyRetention = [int]$profileParts[1]
+          $yearlyRetention = if ($profileParts.Count -ge 3) { [int]$profileParts[2] } else { 0 }
+          $enableYearly = $yearlyRetention -gt 0
+          echo "Parsed retention profile -> Daily=$dailyRetention Weekly=$weeklyRetention Yearly=$yearlyRetention (enableYearly=$enableYearly)"
           $paramObj = @{
             backupFrequency        = @{ value = $env:BACKUP_FREQUENCY }
-            dailyRetentionDays     = @{ value = [int]$env:DAILY_RETENTION }
-            weeklyRetentionDays    = @{ value = [int]$env:WEEKLY_RETENTION }
+            dailyRetentionDays     = @{ value = $dailyRetention }
+            weeklyRetentionDays    = @{ value = $weeklyRetention }
             weeklyBackupDaysOfWeek = @{ value = $days }
             backupScheduleRunTimes = @{ value = @($env:BACKUP_TIME) }
             backupTimeZone         = @{ value = $env:BACKUP_TZ }
             instantRestoreRetentionDays = @{ value = $instant }
             enableMonthlyRetention = @{ value = $false }
-            enableYearlyRetention  = @{ value = $false }
+            enableYearlyRetention  = @{ value = $enableYearly }
+            yearlyRetentionYears   = @{ value = $yearlyRetention }
           }
           $paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8
           $deployName = "gh-multi-region-$(Get-Date -Format yyyyMMddHHmmss)"
