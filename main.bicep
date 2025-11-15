@@ -21,8 +21,8 @@ param backupScheduleRunTimes array = [ '01:00' ]
 @description('Daily retention in days (>=7)')
 @minValue(7)
 param dailyRetentionDays int = 14
-@description('Weekly retention in days (>=1; converted to weeks internally)')
-@minValue(1)
+@description('Weekly retention in days (>=7; converted to weeks internally)')
+@minValue(7)
 param weeklyRetentionDays int = 30
 @description('Days of week for weekly backups')
 param weeklyBackupDaysOfWeek array = [ 'Sunday', 'Wednesday' ]

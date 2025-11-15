@@ -29,7 +29,7 @@ Global (subscription‑scope) components:
 - `subscriptionId`: Target subscription.
 - `deploymentLocation`: Metadata deployment location (e.g., `westeurope`).
 - `weeklyBackupDaysOfWeek`: Comma separated days (e.g., `Sunday,Wednesday`).
-- `retentionProfile`: `Daily|Weekly|Yearly|TagName|TagValue`. Example: `14|30|0|backup|true` (Yearly=0 disables yearly tier).
+- `retentionProfile`: `DailyDays|WeeklyWeeks|YearlyYears|TagName|TagValue`. Example: `14|5|0|backup|true` (Yearly=0 disables yearly tier).
 - `backupFrequency`: `Daily` | `Weekly` | `Both`.
 - `backupScheduleTime`: Time of day (UTC HH:mm, e.g., `18:30`).
 - `backupTimeZone`: Time zone string (e.g., `UTC`).
@@ -43,7 +43,7 @@ Derived at runtime:
 
 ### 5. Azure DevOps Pipeline Parameters (`azure-pipelines.yml`)
 - `deploymentLocation`, `backupFrequency`, `weeklyBackupDaysOfWeekString`, `backupScheduleTimeString`, `backupTimeZone`.
-- `retentionProfile`: `Daily|Weekly|Yearly` (no tag embedding; tags still separate in ADO).
+- `retentionProfile`: `DailyDays|WeeklyWeeks|YearlyYears` (no tag embedding; tags still separate in ADO).
 - Tag parameters: `vmTagName`, `vmTagValue`.
 - Remediation control: `enableAutoRemediation`, `multiRegionAutoRemediation`, `policyBaselineRegion`, `waitMinutesBeforeRemediation`.
 - Role selection: `remediationRole` (same choices as GitHub).
@@ -58,7 +58,7 @@ Differences vs GitHub:
 - Daily policy (`2025-02-01` API) with `scheduleRunTimes` (ISO conversion) and daily retention.
 - Weekly policy (`2025-02-01` API) uses:
   - `scheduleRunFrequency=Weekly`, `scheduleRunDays`, ISO run times.
-  - Weekly retention (days converted to weeks internally).
+  - Weekly retention: pipelines accept weeks and convert to days for Bicep; in Bicep, weeklyRetentionDays must be >=7 (represents >=1 week).
   - Conditional monthly/yearly blocks built via `union()` only when enabled.
   - Instant restore retention forced to 5.
 - Common fields: `policyType='V1'`, `instantRPDetails={}`, `tieringPolicy` set to `DoNotTier`.
@@ -105,14 +105,14 @@ Tools:
 
 ### 11. Quick Start (GitHub Actions)
 1. Add secret for Azure login (e.g., `AZURE_CREDENTIALS`).
-2. Run the workflow with default `retentionProfile=14|30|0|backup|true` and `backupFrequency=Weekly`.
+2. Run the workflow with default `retentionProfile=14|5|0|backup|true` and `backupFrequency=Weekly`.
 3. (Optional) Enable remediation by setting `enableAutoRemediation=true`.
 4. Confirm policies and vaults: Recovery Services Vault > Backup Policies.
 
 ### 12. Quick Start (Azure DevOps)
 1. Create/verify service connection.
 2. Set pipeline variable `subscriptionId`.
-3. Queue pipeline with desired parameters (e.g., `backupFrequency=Both`, `retentionProfile=14|30|0`).
+3. Queue pipeline with desired parameters (e.g., `backupFrequency=Both`, `retentionProfile=14|5|0`).
 4. Enable `enableAutoRemediation=true` to start remediation stage after deploy.
 
 ### 13. Local Test Commands
@@ -121,7 +121,7 @@ az account set --subscription <SUB_ID>
 az bicep build --file main.bicep
 az deployment sub create --name test-backup --location westeurope --template-file main.bicep --parameters \
   backupFrequency=Weekly \
-  weeklyRetentionDays=30 \
+  weeklyRetentionDays=35 \
   weeklyBackupDaysOfWeek='["Sunday","Wednesday"]' \
   backupScheduleRunTimes='["18:30"]' \
   backupTimeZone=UTC \
@@ -133,6 +133,7 @@ az deployment sub create --name test-backup --location westeurope --template-fil
 
 ### 14. Troubleshooting
 - Weekly policy NO_PARAM errors: Remove yearly/monthly tiers (set Yearly=0) and verify ISO times; gradually re‑enable yearly.
+- Invalid weekly retention (<1 week): Weekly policy requires retention of at least one full week; supply WeeklyWeeks >= 1 (pipelines convert to >=7 days).
 - RoleDefinitionDoesNotExist: Switch back to Contributor; confirm GUID for Backup Contributor is present (`az role definition list --name "Backup Contributor"`).
 - Remediation identity lacks permissions: Ensure role assignment succeeded and policy assignment identity’s UAI has Contributor/Backup Contributor on vault RG + target VM RG.
 - GitHub outputs missing tags: Confirm `retentionProfile` has exactly 5 segments.

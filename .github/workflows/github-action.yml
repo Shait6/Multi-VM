@@ -147,7 +147,7 @@ jobs:
           az account set --subscription "$env:SUBSCRIPTION_ID"
           $days = $env:WEEKLY_DAYS.Split(',') | ForEach-Object { $_.Trim() }
           if ([int]$env:DAILY_RETENTION -lt 7) { throw "dailyRetentionDays ($env:DAILY_RETENTION) must be >= 7" }
-          if ([int]$env:WEEKLY_RETENTION -lt 1) { throw "weeklyRetentionDays ($env:WEEKLY_RETENTION) must be >= 1" }
+          if ([int]$env:WEEKLY_RETENTION -lt 7) { throw "weeklyRetentionDays ($env:WEEKLY_RETENTION) must be >= 7" }
           $paramObj = @{
             backupFrequency        = @{ value = $env:BACKUP_FREQUENCY }
             dailyRetentionDays     = @{ value = [int]$env:DAILY_RETENTION }

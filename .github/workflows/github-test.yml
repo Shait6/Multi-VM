@@ -100,18 +100,19 @@ jobs:
           echo "Computed instant restore retention days (parameter): $instant"
           if ($env:BACKUP_FREQUENCY -eq 'Weekly') { echo 'Weekly policy will use 5 days (enforced).'}
           if ($env:BACKUP_FREQUENCY -eq 'Both')   { echo "Weekly policy will use 5 days; daily uses $instant day(s)." }
-          # Parse composite retention profile Daily|Weekly|Yearly|TagName|TagValue
+          # Parse composite retention profile DailyDays|WeeklyWeeks|YearlyYears|TagName|TagValue
           $profileParts = $env:RETENTION_PROFILE.Split('|')
           if ($profileParts.Count -lt 5) { throw "Invalid retentionProfile format. Expected Daily|Weekly|Yearly|TagName|TagValue (e.g. 14|30|10|backup|true)." }
-          $dailyRetention  = [int]$profileParts[0]
-          $weeklyRetention = [int]$profileParts[1]
-          $yearlyRetention = [int]$profileParts[2]
+          $dailyRetention   = [int]$profileParts[0]
+          $weeklyWeeks      = [int]$profileParts[1]
+          $yearlyYears      = [int]$profileParts[2]
           $tagName         = $profileParts[3]
           $tagValue        = $profileParts[4]
           if ($dailyRetention -lt 7) { throw "dailyRetentionDays ($dailyRetention) must be >= 7" }
-          if ($weeklyRetention -lt 1) { throw "weeklyRetentionDays ($weeklyRetention) must be >= 1" }
-          $enableYearly = $yearlyRetention -gt 0
-          echo "Parsed profile -> Daily=$dailyRetention Weekly=$weeklyRetention Yearly=$yearlyRetention TagName=$tagName TagValue=$tagValue (enableYearly=$enableYearly)"
+          if ($weeklyWeeks -lt 1) { throw "weeklyRetentionWeeks ($weeklyWeeks) must be >= 1" }
+          $weeklyRetentionDays = $weeklyWeeks * 7
+          $enableYearly = $yearlyYears -gt 0
+          echo "Parsed profile -> DailyDays=$dailyRetention WeeklyWeeks=$weeklyWeeks YearlyYears=$yearlyYears TagName=$tagName TagValue=$tagValue (enableYearly=$enableYearly)"
           # Map remediation role choice to GUID
           $roleChoice = "$env:ROLE_CHOICE"
           $roleGuid = if ($roleChoice -eq 'BackupContributor') { '5e0bd9bd-7b93-4f78-a8b0-1f0f781f1493' } else { 'b24988ac-6180-42a0-ab88-20f7382dd24c' }
@@ -120,14 +121,14 @@ jobs:
             $paramObj = @{
               backupFrequency        = @{ value = $env:BACKUP_FREQUENCY }
               dailyRetentionDays     = @{ value = $dailyRetention }
-              weeklyRetentionDays    = @{ value = $weeklyRetention }
+              weeklyRetentionDays    = @{ value = $weeklyRetentionDays }
               weeklyBackupDaysOfWeek = @{ value = $days }
               backupScheduleRunTimes = @{ value = @($env:BACKUP_TIME) }
               backupTimeZone         = @{ value = $env:BACKUP_TZ }
               instantRestoreRetentionDays = @{ value = $instant }
               enableMonthlyRetention = @{ value = $false }
               enableYearlyRetention  = @{ value = $enableYearly }
-              yearlyRetentionYears   = @{ value = $yearlyRetention }
+          	  yearlyRetentionYears   = @{ value = $yearlyYears }
               remediationRoleDefinitionId = @{ value = $roleGuid }
             }
             $paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8

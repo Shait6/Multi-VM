@@ -13,8 +13,8 @@ param weeklyBackupDaysOfWeek array = []
 @description('Retention in days for daily backups (>=7)')
 @minValue(7)
 param dailyRetentionDays int = 14
-@description('Retention in days for weekly backups (>=1; converted to weeks)')
-@minValue(1)
+@description('Retention in days for weekly backups (>=7; converted to weeks)')
+@minValue(7)
 param weeklyRetentionDays int = 30
 @description('Time zone for schedule')
 param backupTimeZone string = 'UTC'
