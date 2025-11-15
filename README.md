@@ -11,7 +11,7 @@ This solution deploys and manages a standardized multi‑region Azure VM backup 
 - Instant Restore logic: Weekly (and weekly portion of Both) always uses 5 days; Daily portion clamps 1–5.
 - Optional monthly/yearly retention tiers (disabled by default; yearly enabled only when >0 supplied).
 - Automated policy‑based remediation to protect tagged VMs.
-- Role parameterization: choose `Contributor` (broad) or `Backup Contributor` (least‑privilege for backup) at dispatch/pipeline runtime.
+- Role: fixed to `Contributor` for remediation and assignments.
 
 ### 3. Architecture Summary
 Per region resource group `rsv-rg-<region>` hosts:
@@ -49,10 +49,9 @@ Differences vs GitHub:
 - Common fields: `policyType='V1'`, `instantRPDetails={}`, `tieringPolicy` set to `DoNotTier`.
 
 ### 7. Role Selection
-`main.bicep` parameter `remediationRoleDefinitionId` defaults to Contributor GUID:
+Remediation role is fixed to Contributor:
 - Contributor: `b24988ac-6180-42a0-ab88-20f7382dd24c`
-- Backup Contributor: `5e0bd9bd-7b93-4f78-a8b0-1f0f781f1493`
-Switch via dispatch/pipeline to enforce least privilege once validated.
+The template still exposes `remediationRoleDefinitionId` with this default, but pipelines always pass Contributor based on observed permission requirements for remediation.
 
 ### 8. DeployIfNotExists Auto‑Enable Policy
 - Definition & assignment in `modules/backupAutoEnablePolicy.bicep` using rule file `autoEnablePolicy.rule.json`.
@@ -119,7 +118,7 @@ az deployment sub create --name test-backup --location westeurope --template-fil
 ### 14. Troubleshooting
 - Weekly policy NO_PARAM errors: Remove yearly/monthly tiers (set Yearly=0) and verify ISO times; gradually re‑enable yearly.
 - Invalid weekly retention (<1 week): Weekly policy requires retention of at least one full week; supply WeeklyWeeks >= 1 (pipelines convert to >=7 days).
-- RoleDefinitionDoesNotExist: Switch back to Contributor; confirm GUID for Backup Contributor is present (`az role definition list --name "Backup Contributor"`).
+- RoleDefinitionDoesNotExist: Ensure Contributor role is used (fixed in pipelines). If authoring custom runs, confirm GUID is present.
 - Remediation identity lacks permissions: Ensure role assignment succeeded and policy assignment identity’s UAI has Contributor/Backup Contributor on vault RG + target VM RG.
 - GitHub outputs missing tags: Confirm `retentionProfile` has exactly 5 segments.
 - Azure DevOps subscription not set: Define variable or rely on service connection default.
