@@ -171,6 +171,8 @@ stages:
           $yearlyRetention = if ($profileParts.Count -ge 3) { [int]$profileParts[2] } else { 0 }
           $enableYearly = $yearlyRetention -gt 0
           Write-Host "Parsed retention profile => Daily=$dailyRetention Weekly=$weeklyRetention Yearly=$yearlyRetention EnableYearly=$enableYearly"
+          if ($dailyRetention -lt 7) { throw "dailyRetentionDays ($dailyRetention) must be >= 7" }
+          if ($weeklyRetention -lt 1) { throw "weeklyRetentionDays ($weeklyRetention) must be >= 1" }
           # Instant restore rules: Weekly frequency forces 5 days; Daily/Both clamp to 1..5
           $instantInput = [int]${{ parameters.instantRestoreRetentionDays }}
           $instantClamped = [Math]::Min([Math]::Max($instantInput,1),5)

@@ -18,9 +18,11 @@ var backupPolicyNames = [for region in regions: 'backup-policy-${region}']
 
 @description('Backup schedule run times (UTC HH:mm) applied to all region policies')
 param backupScheduleRunTimes array = [ '01:00' ]
-@description('Daily retention in days')
+@description('Daily retention in days (>=7)')
+@minValue(7)
 param dailyRetentionDays int = 14
-@description('Weekly retention in days')
+@description('Weekly retention in days (>=1; converted to weeks internally)')
+@minValue(1)
 param weeklyRetentionDays int = 30
 @description('Days of week for weekly backups')
 param weeklyBackupDaysOfWeek array = [ 'Sunday', 'Wednesday' ]

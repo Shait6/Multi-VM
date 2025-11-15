@@ -10,9 +10,11 @@ param backupFrequency string = 'Daily'
 param backupScheduleRunTimes array
 @description('Weekly run days (Weekly or Both)')
 param weeklyBackupDaysOfWeek array = []
-@description('Retention in days for daily backups')
+@description('Retention in days for daily backups (>=7)')
+@minValue(7)
 param dailyRetentionDays int = 14
-@description('Retention in days for weekly backups')
+@description('Retention in days for weekly backups (>=1; converted to weeks)')
+@minValue(1)
 param weeklyRetentionDays int = 30
 @description('Time zone for schedule')
 param backupTimeZone string = 'UTC'

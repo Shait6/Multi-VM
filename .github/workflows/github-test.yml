@@ -108,6 +108,8 @@ jobs:
           $yearlyRetention = [int]$profileParts[2]
           $tagName         = $profileParts[3]
           $tagValue        = $profileParts[4]
+          if ($dailyRetention -lt 7) { throw "dailyRetentionDays ($dailyRetention) must be >= 7" }
+          if ($weeklyRetention -lt 1) { throw "weeklyRetentionDays ($weeklyRetention) must be >= 1" }
           $enableYearly = $yearlyRetention -gt 0
           echo "Parsed profile -> Daily=$dailyRetention Weekly=$weeklyRetention Yearly=$yearlyRetention TagName=$tagName TagValue=$tagValue (enableYearly=$enableYearly)"
           # Map remediation role choice to GUID
