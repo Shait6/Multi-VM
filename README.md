@@ -7,10 +7,10 @@ This solution deploys and manages a standardized multi‑region Azure VM backup 
 ### 2. Key Capabilities
 - Multi‑region rollout (currently: `westeurope`, `northeurope`, `swedencentral`, `germanywestcentral`).
 - Daily, Weekly, or Both policy creation with automatic shape alignment to the Azure API.
-- Composite retention & tagging input (GitHub: `retentionProfile`, ADO: `retentionProfile` + separate tag params).
+- Unified composite retention & tagging input (GitHub & ADO): `DailyDays|WeeklyWeeks|YearlyYears|TagName|TagValue`.
 - Instant Restore logic: Weekly (and weekly portion of Both) always uses 5 days; Daily portion clamps 1–5.
 - Optional monthly/yearly retention tiers (disabled by default; yearly enabled only when >0 supplied).
-- Automated policy‑based remediation to protect tagged VMs.
+- Automated policy‑based remediation to protect tagged VMs (multi‑region supported via list inputs).
 - Role: fixed to `Contributor` for remediation and assignments.
 
 ### 3. Architecture Summary
@@ -25,7 +25,7 @@ Global (subscription‑scope) components:
 - Optional DeployIfNotExists policy & assignment (subscription‑scope) for auto‑enable backup.
 - Audit‑only policy pipeline (Azure DevOps) for visibility without enforcement.
 
-### 4. GitHub Workflow Dispatch Inputs (`.github/workflows/github-test.yml`)
+### 4. GitHub Workflow Dispatch Inputs (`.github/workflows/github-test.yml` & `github-action.yml`)
 - `subscriptionId`: Target subscription.
 - `deploymentLocation`: Metadata deployment location (e.g., `westeurope`).
 - `weeklyBackupDaysOfWeek`: Comma separated days (e.g., `Sunday,Wednesday`).
@@ -36,16 +36,26 @@ Global (subscription‑scope) components:
 - `instantRestoreRetentionDays`: 1–5 (ignored for weekly; weekly forced to 5).
 - `remediationRole`: `Contributor` | `BackupContributor` (maps to GUID).
 - `enableAutoRemediation`: `true` to deploy & kick off remediation stage.
+- `remediationRegions`: Optional comma‑separated list (e.g. `westeurope,northeurope`). Empty => use `deploymentLocation` only.
 
 Derived at runtime:
 - Tag name/value extracted from `retentionProfile` (positions 4 & 5).
 - Yearly enable flag auto‑computed (`Yearly > 0`).
 
 ### 5. Azure DevOps Pipeline Parameters (`azure-pipelines.yml`)
-- Remediation control: `enableAutoRemediation`, `multiRegionAutoRemediation`, `policyBaselineRegion`, `waitMinutesBeforeRemediation`.
+- `deploymentLocation`: Region used for base subscription deployment metadata.
+- `backupFrequency`: `Daily|Weekly|Both`.
+- `retentionProfile`: `DailyDays|WeeklyWeeks|YearlyYears|TagName|TagValue` (same format as GitHub).
+- `weeklyBackupDaysOfWeekString`: Comma‑separated weekly schedule days.
+- `backupScheduleTimeString`, `backupTimeZone`, `instantRestoreRetentionDays` (Weekly or weekly portion forces 5 internally).
+- Monthly/Yearly tier toggles and shape parameters (`enableMonthlyRetention`, `monthlyRetentionMonths`, etc.).
+- `enableAutoRemediation`: Enable remediation stage.
+- `remediationRegions`: Comma‑separated list of regions to assign & remediate. Empty ⇒ only `deploymentLocation`.
+- `waitMinutesBeforeRemediation`: Delay buffer before remediation starts.
 
-Differences vs GitHub:
-  - Instant restore retention forced to 5.
+Notes:
+- Tags parsed from `retentionProfile`; separate `vmTagName` / `vmTagValue` parameters removed.
+- Per‑region remediation creates unique policy assignment names `enable-vm-backup-<region>` for persistent auto‑enable.
 - Common fields: `policyType='V1'`, `instantRPDetails={}`, `tieringPolicy` set to `DoNotTier`.
 
 ### 7. Role Selection
@@ -95,9 +105,10 @@ Tools:
 
 ### 12. Quick Start (Azure DevOps)
 1. Create/verify service connection.
-2. Set pipeline variable `subscriptionId`.
-3. Queue pipeline with desired parameters (e.g., `backupFrequency=Both`, `retentionProfile=14|5|0`).
-4. Enable `enableAutoRemediation=true` to start remediation stage after deploy.
+2. Set pipeline variable `subscriptionId` (or rely on connection context).
+3. Queue pipeline with parameters (e.g. `backupFrequency=Both`, `retentionProfile=14|5|0|backup|true`).
+4. For multi‑region remediation: set `enableAutoRemediation=true` and `remediationRegions=westeurope,northeurope` (omit to use only `deploymentLocation`).
+5. Verify protected items in each target vault RG (`rsv-rg-<region>`).
 
 ### 13. Local Test Commands
 ```powershell
@@ -116,12 +127,14 @@ az deployment sub create --name test-backup --location westeurope --template-fil
 ```
 
 ### 14. Troubleshooting
-- Weekly policy NO_PARAM errors: Remove yearly/monthly tiers (set Yearly=0) and verify ISO times; gradually re‑enable yearly.
-- Invalid weekly retention (<1 week): Weekly policy requires retention of at least one full week; supply WeeklyWeeks >= 1 (pipelines convert to >=7 days).
-- RoleDefinitionDoesNotExist: Ensure Contributor role is used (fixed in pipelines). If authoring custom runs, confirm GUID is present.
-- Remediation identity lacks permissions: Ensure role assignment succeeded and policy assignment identity’s UAI has Contributor/Backup Contributor on vault RG + target VM RG.
-- GitHub outputs missing tags: Confirm `retentionProfile` has exactly 5 segments.
-- Azure DevOps subscription not set: Define variable or rely on service connection default.
+- Policy NO_PARAM errors (weekly): Temporarily disable yearly/monthly (Yearly=0) and ensure ISO schedule times are valid; re‑enable incrementally.
+- Weekly retention invalid (<1 week): Supply WeeklyWeeks ≥ 1 (converted to days); daily must be ≥7 days.
+- Missing protection after remediation: Verify the VM has exact tag pair from `retentionProfile` and that region included in `remediationRegions` (or matches `deploymentLocation`).
+- Protected item already exists: Policy will skip deployment; remediation logs show ExistingNonCompliant only for truly unprotected VMs.
+- Missing tag parsing (ADO/GitHub): Ensure composite has 5 segments; examples: `14|5|0|backup|true`.
+- Identity permissions: UAI needs Contributor on vault RG and VM RG(s). Add role assignment if VMs reside outside vault RG.
+- Secret name typo (GitHub): Confirm `secrets.serivcon` exists or rename to correct secret key.
+- Subscription context (ADO): Set `subscriptionId` variable or validate service connection scope.
 
 ### 15. Design Notes
 - Composite retention reduces input surface while preserving flexibility.

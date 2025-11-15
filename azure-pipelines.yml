@@ -15,22 +15,10 @@ parameters:
     - 'false'
   default: 'false'
   displayName: 'Enable Auto-Remediation (DeployIfNotExists)'
-- name: multiRegionAutoRemediation
+- name: remediationRegions
   type: string
-  values:
-    - 'true'
-    - 'false'
-  default: 'false'
-  displayName: 'Remediate All Regions (else baseline only)'
-- name: policyBaselineRegion
-  type: string
-  values:
-    - westeurope
-    - northeurope
-    - swedencentral
-    - germanywestcentral
-  default: westeurope
-  displayName: 'Baseline Region for Policy'
+  default: ''
+  displayName: 'Comma-separated regions to remediate (empty -> deploymentLocation)'
 - name: backupFrequency
   type: string
   values:
@@ -41,8 +29,8 @@ parameters:
   displayName: 'Backup Frequency'
 - name: retentionProfile
   type: string
-  default: '14|30|0'
-  displayName: 'Retention Profile Daily|Weekly|Yearly (Yearly=0 disables yearly tier)'
+  default: '14|30|0|backup|true'
+  displayName: 'Retention Profile Daily|Weekly|Yearly|TagName|TagValue (Yearly=0 disables yearly tier)'
 - name: dailyRetentionDays
   type: number
   default: 14
@@ -55,14 +43,6 @@ parameters:
   type: string
   default: 'Sunday,Wednesday'
   displayName: 'Weekly Backup Days (comma separated)'
-- name: vmTagName
-  type: string
-  default: 'backup'
-  displayName: 'Tag name used to select VMs for remediation'
-- name: vmTagValue
-  type: string
-  default: 'true'
-  displayName: 'Tag value used to select VMs for remediation'
 - name: backupScheduleTimeString
   type: string
   default: '18:30'
@@ -158,15 +138,17 @@ stages:
           # Parse retentionProfile DailyDays|WeeklyWeeks|YearlyYears
           $profileRaw = "${{ parameters.retentionProfile }}"
           $profileParts = $profileRaw.Split('|')
-          if ($profileParts.Count -lt 2) { throw "Invalid retentionProfile format '$profileRaw'. Expected Daily|Weekly|Yearly (e.g. 14|5|1)." }
+          if ($profileParts.Count -lt 5) { throw "Invalid retentionProfile format '$profileRaw'. Expected Daily|Weekly|Yearly|TagName|TagValue (e.g. 14|5|0|backup|true)." }
           $dailyRetention  = [int]$profileParts[0]
           $weeklyWeeks     = [int]$profileParts[1]
-          $yearlyYears     = if ($profileParts.Count -ge 3) { [int]$profileParts[2] } else { 0 }
+          $yearlyYears     = [int]$profileParts[2]
+          $tagName         = $profileParts[3]
+          $tagValue        = $profileParts[4]
           $enableYearly = $yearlyYears -gt 0
           if ($dailyRetention -lt 7) { throw "dailyRetentionDays ($dailyRetention) must be >= 7" }
           if ($weeklyWeeks -lt 1) { throw "weeklyRetentionWeeks ($weeklyWeeks) must be >= 1" }
           $weeklyRetention = $weeklyWeeks * 7
-          Write-Host "Parsed retention profile => DailyDays=$dailyRetention WeeklyWeeks=$weeklyWeeks (-> $weeklyRetention days) YearlyYears=$yearlyYears EnableYearly=$enableYearly"
+          Write-Host "Parsed retention profile => DailyDays=$dailyRetention WeeklyWeeks=$weeklyWeeks (-> $weeklyRetention days) YearlyYears=$yearlyYears TagName=$tagName TagValue=$tagValue EnableYearly=$enableYearly"
           # Instant restore rules: Weekly frequency forces 5 days; Daily/Both clamp to 1..5
           $instantInput = [int]${{ parameters.instantRestoreRetentionDays }}
           $instantClamped = [Math]::Min([Math]::Max($instantInput,1),5)
@@ -240,35 +222,41 @@ stages:
           $wait = [int]${{ parameters.waitMinutesBeforeRemediation }}
           if ($wait -gt 0) { Write-Host "Waiting $wait minute(s) before remediation..."; Start-Sleep -Seconds ($wait * 60) }
 
-          $allRegions = @('westeurope','northeurope','swedencentral','germanywestcentral')
-          $multi = ('${{ parameters.multiRegionAutoRemediation }}' -eq 'true')
-          $targetRegions = if ($multi) { $allRegions } else { @('${{ parameters.policyBaselineRegion }}') }
+          $regionsRaw = '${{ parameters.remediationRegions }}'
+          if ([string]::IsNullOrWhiteSpace($regionsRaw)) { $targetRegions = @('${{ parameters.deploymentLocation }}') } else { $targetRegions = $regionsRaw.Split(',') | ForEach-Object { $_.Trim() } }
+
           foreach ($r in $targetRegions) {
             $vaultName = "rsv-$r"
             $vaultRg   = "rsv-rg-$r"
             $basePolicyName = "backup-policy-$r"
             $freq = '${{ parameters.backupFrequency }}'
-            if ($freq -eq 'Both') { $policyName = "$basePolicyName-weekly" }
-            elseif ($freq -eq 'Weekly') { $policyName = $basePolicyName }
-            else { $policyName = $basePolicyName }
+            if ($freq -eq 'Both') { $policyName = "$basePolicyName-weekly" } else { $policyName = $basePolicyName }
             $uaiId = "/subscriptions/$subscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
+            $assignName = "enable-vm-backup-$r"
 
-            Write-Host "Deploying policy assignment: region=$r vault=$vaultName policy=$policyName tag=${{ parameters.vmTagName }}=${{ parameters.vmTagValue }}"
+            # Re-parse retentionProfile for tags
+            $profileRaw = "${{ parameters.retentionProfile }}"
+            $parts = $profileRaw.Split('|')
+            if ($parts.Count -lt 5) { throw "Invalid retentionProfile format '$profileRaw'. Expected Daily|Weekly|Yearly|TagName|TagValue." }
+            $tagName  = $parts[3]
+            $tagValue = $parts[4]
+            Write-Host "Deploying policy assignment: region=$r vault=$vaultName policy=$policyName tag=$tagName=$tagValue"
             az deployment sub create `
               --name "remediate-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" `
               --location $r `
               --template-file modules/backupAutoEnablePolicy.bicep `
               --parameters `
+                policyAssignmentName=$assignName `
                 assignmentLocation=$r `
                 assignmentIdentityId=$uaiId `
-                vmTagName='${{ parameters.vmTagName }}' `
-                vmTagValue='${{ parameters.vmTagValue }}' `
+                vmTagName=$tagName `
+                vmTagValue=$tagValue `
                 vaultName=$vaultName `
                 vaultResourceGroup=$vaultRg `
                 backupPolicyName=$policyName `
               -o none
 
-            $assign = az policy assignment show -n enable-vm-backup-assignment -o json | ConvertFrom-Json
+            $assign = az policy assignment show -n $assignName -o json | ConvertFrom-Json
             if ($null -ne $assign) {
               $remName = "remediate-vm-backup-$r"
               Write-Host "Starting remediation: $remName"

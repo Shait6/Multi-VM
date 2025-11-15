@@ -2,13 +2,13 @@
   "if": {
     "allOf": [
       { "field": "type", "equals": "Microsoft.Compute/virtualMachines" },
-      { "field": "tags[__TAGNAME__]", "equals": "__TAGVALUE__" }
+      { "field": "tags['__TAGNAME__']", "equals": "__TAGVALUE__" }
     ]
   },
   "then": {
     "effect": "deployIfNotExists",
     "details": {
-      "type": "Microsoft.Resources/deployments",
+      "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
       "roleDefinitionIds": ["__ROLEDEFID__"],
       "existenceCondition": {
         "field": "name",

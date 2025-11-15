@@ -40,6 +40,10 @@ on:
         description: 'Backup schedule time zone'
         required: false
         default: 'UTC'
+      remediationRegions:
+        description: 'Comma-separated regions to remediate (empty -> deploymentLocation)'
+        required: false
+        default: ''
       instantRestoreRetentionDays:
         description: 'Instant restore retention (days). Weekly or Both: weekly policy uses 5; daily uses this value (1–5).'
         required: false
@@ -144,7 +148,7 @@ jobs:
             "vmTagValue=$tagValue" | Out-File -FilePath $outFile -Append
 
   remediate:
-    if: ${{ inputs.enableAutoRemediation == 'true' }}
+    if: ${{ github.event.inputs.enableAutoRemediation == 'true' }}
     needs: deploy
     runs-on: windows-latest
     env:
@@ -153,6 +157,7 @@ jobs:
       BACKUP_FREQUENCY: ${{ github.event.inputs.backupFrequency }}
       VM_TAG_NAME: ${{ needs.deploy.outputs.vmTagName }}
       VM_TAG_VALUE: ${{ needs.deploy.outputs.vmTagValue }}
+      REMEDIATION_REGIONS: ${{ github.event.inputs.remediationRegions }}
       WAIT_MINUTES: '5'
     steps:
       - name: Checkout
@@ -171,34 +176,40 @@ jobs:
           $wait = [int]$env:WAIT_MINUTES
           if ($wait -gt 0) { Write-Host "Waiting $wait minute(s) before remediation..."; Start-Sleep -Seconds ($wait * 60) }
 
-          $r = $env:DEPLOYMENT_LOCATION
-          $vaultName = "rsv-$r"
-          $vaultRg   = "rsv-rg-$r"
-          $basePolicyName = "backup-policy-$r"
-          if ($env:BACKUP_FREQUENCY -eq 'Both') { $policyName = "$basePolicyName-weekly" } else { $policyName = $basePolicyName }
-          $uaiId = "/subscriptions/$env:SUBSCRIPTION_ID/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
+          $regionsRaw = $env:REMEDIATION_REGIONS
+          if ([string]::IsNullOrWhiteSpace($regionsRaw)) { $targetRegions = @($env:DEPLOYMENT_LOCATION) } else { $targetRegions = $regionsRaw.Split(',') | ForEach-Object { $_.Trim() } }
 
-          echo "Deploying policy assignment for region=$r vault=$vaultName policy=$policyName"
-          az deployment sub create `
-            --name "remediate-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" `
-            --location $r `
-            --template-file modules/backupAutoEnablePolicy.bicep `
-            --parameters `
-              assignmentLocation=$r `
-              assignmentIdentityId=$uaiId `
-              vmTagName=$env:VM_TAG_NAME `
-              vmTagValue=$env:VM_TAG_VALUE `
-              vaultName=$vaultName `
-              vaultResourceGroup=$vaultRg `
-              backupPolicyName=$policyName `
-            -o none
+          foreach ($r in $targetRegions) {
+            $vaultName = "rsv-$r"
+            $vaultRg   = "rsv-rg-$r"
+            $basePolicyName = "backup-policy-$r"
+            if ($env:BACKUP_FREQUENCY -eq 'Both') { $policyName = "$basePolicyName-weekly" } else { $policyName = $basePolicyName }
+            $uaiId = "/subscriptions/$env:SUBSCRIPTION_ID/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
+            $assignName = "enable-vm-backup-$r"
 
-          $assign = az policy assignment show -n enable-vm-backup-assignment -o json | ConvertFrom-Json
-          if ($null -ne $assign) {
-            $remName = "remediate-vm-backup-$r"
-            echo "Starting remediation: $remName"
-            az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ExistingNonCompliant -o none
-          } else {
-            echo "Warning: Policy assignment not found after deployment in region $r"
+            echo "Deploying policy assignment for region=$r vault=$vaultName policy=$policyName"
+            az deployment sub create `
+              --name "remediate-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" `
+              --location $r `
+              --template-file modules/backupAutoEnablePolicy.bicep `
+              --parameters `
+                policyAssignmentName=$assignName `
+                assignmentLocation=$r `
+                assignmentIdentityId=$uaiId `
+                vmTagName=$env:VM_TAG_NAME `
+                vmTagValue=$env:VM_TAG_VALUE `
+                vaultName=$vaultName `
+                vaultResourceGroup=$vaultRg `
+                backupPolicyName=$policyName `
+              -o none
+
+            $assign = az policy assignment show -n $assignName -o json | ConvertFrom-Json
+            if ($null -ne $assign) {
+              $remName = "remediate-vm-backup-$r"
+              echo "Starting remediation: $remName"
+              az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ExistingNonCompliant -o none
+            } else {
+              echo "Warning: Policy assignment not found after deployment in region $r"
+            }
           }
           
