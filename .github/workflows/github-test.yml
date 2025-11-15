@@ -52,6 +52,12 @@ on:
         default: 'Contributor'
         type: choice
         options: ['Contributor','BackupContributor']
+      remediationPolicyKind:
+        description: 'When Both is deployed, which policy should remediation use?'
+        required: false
+        default: 'Weekly'
+        type: choice
+        options: ['Daily','Weekly']
 
 jobs:
   deploy:
@@ -72,6 +78,7 @@ jobs:
       BACKUP_TZ: ${{ github.event.inputs.backupTimeZone }}
       INSTANT_RESTORE_DAYS: ${{ github.event.inputs.instantRestoreRetentionDays }}
       ROLE_CHOICE: ${{ github.event.inputs.remediationRole }}
+      REMEDIATION_POLICY_KIND: ${{ github.event.inputs.remediationPolicyKind }}
       
     steps:
       - name: Checkout
@@ -159,6 +166,7 @@ jobs:
       SUBSCRIPTION_ID: ${{ github.event.inputs.subscriptionId }}
       DEPLOYMENT_LOCATION: ${{ github.event.inputs.deploymentLocation }}
       BACKUP_FREQUENCY: ${{ github.event.inputs.backupFrequency }}
+      REMEDIATION_POLICY_KIND: ${{ github.event.inputs.remediationPolicyKind }}
       VM_TAG_NAME: ${{ needs.deploy.outputs.vmTagName }}
       VM_TAG_VALUE: ${{ needs.deploy.outputs.vmTagValue }}
       WAIT_MINUTES: '5'
@@ -183,7 +191,11 @@ jobs:
           $vaultName = "rsv-$r"
           $vaultRg   = "rsv-rg-$r"
           $basePolicyName = "backup-policy-$r"
-          if ($env:BACKUP_FREQUENCY -eq 'Both') { $policyName = "$basePolicyName-weekly" } else { $policyName = $basePolicyName }
+          if ($env:BACKUP_FREQUENCY -eq 'Both') {
+            if ($env:REMEDIATION_POLICY_KIND -eq 'Daily') { $policyName = "$basePolicyName-daily" } else { $policyName = "$basePolicyName-weekly" }
+          } else {
+            $policyName = $basePolicyName
+          }
           $uaiId = "/subscriptions/$env:SUBSCRIPTION_ID/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
 
           echo "Deploying policy assignment for region=$r vault=$vaultName policy=$policyName"

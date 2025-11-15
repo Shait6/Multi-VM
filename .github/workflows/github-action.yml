@@ -52,6 +52,12 @@ on:
         description: 'Wait minutes before remediation (buffer after deploy)'
         required: false
         default: '5'
+      remediationPolicyKind:
+        description: 'When Both is deployed, which policy should remediation use?'
+        required: false
+        default: 'Weekly'
+        type: choice
+        options: ['Daily','Weekly']
       enableMonthlyRetention:
         description: 'Enable monthly retention (Weekly policy only)'
         required: false
@@ -185,6 +191,7 @@ jobs:
       SUBSCRIPTION_ID: ${{ github.event.inputs.subscriptionId }}
       DEPLOYMENT_LOCATION: ${{ github.event.inputs.deploymentLocation }}
       BACKUP_FREQUENCY: ${{ github.event.inputs.backupFrequency }}
+      REMEDIATION_POLICY_KIND: ${{ github.event.inputs.remediationPolicyKind }}
       VM_TAG_NAME: ${{ github.event.inputs.vmTagName }}
       VM_TAG_VALUE: ${{ github.event.inputs.vmTagValue }}
       WAIT_MINUTES: ${{ github.event.inputs.waitMinutesBeforeRemediation }}
@@ -209,7 +216,11 @@ jobs:
           $vaultName = "rsv-$r"
           $vaultRg   = "rsv-rg-$r"
           $basePolicyName = "backup-policy-$r"
-          if ($env:BACKUP_FREQUENCY -eq 'Both') { $policyName = "$basePolicyName-weekly" } else { $policyName = $basePolicyName }
+          if ($env:BACKUP_FREQUENCY -eq 'Both') {
+            if ($env:REMEDIATION_POLICY_KIND -eq 'Daily') { $policyName = "$basePolicyName-daily" } else { $policyName = "$basePolicyName-weekly" }
+          } else {
+            $policyName = $basePolicyName
+          }
           $uaiId = "/subscriptions/$env:SUBSCRIPTION_ID/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
 
           echo "Deploying policy assignment for region=$r vault=$vaultName policy=$policyName"

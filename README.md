@@ -42,24 +42,10 @@ Derived at runtime:
 - Yearly enable flag auto‑computed (`Yearly > 0`).
 
 ### 5. Azure DevOps Pipeline Parameters (`azure-pipelines.yml`)
-- `deploymentLocation`, `backupFrequency`, `weeklyBackupDaysOfWeekString`, `backupScheduleTimeString`, `backupTimeZone`.
-- `retentionProfile`: `DailyDays|WeeklyWeeks|YearlyYears` (no tag embedding; tags still separate in ADO).
-- Tag parameters: `vmTagName`, `vmTagValue`.
-- Remediation control: `enableAutoRemediation`, `multiRegionAutoRemediation`, `policyBaselineRegion`, `waitMinutesBeforeRemediation`.
-- Role selection: `remediationRole` (same choices as GitHub).
-- Monthly/Yearly tier toggles and settings still available individually for advanced use (monthly disabled by default; yearly disabled when Yearly=0).
+ - Remediation control: `enableAutoRemediation`, `multiRegionAutoRemediation`, `policyBaselineRegion`, `remediationPolicyKind` (Daily|Weekly when Both), `waitMinutesBeforeRemediation`.
 
 Differences vs GitHub:
-- GitHub embeds tags inside `retentionProfile`; ADO uses separate tag parameters.
-- GitHub workflow sets outputs from step `deploy_backup`; ADO persists everything through inline Azure CLI script.
-- ADO includes optional multi‑region remediation toggle; GitHub currently remediates only baseline deployment location.
-
-### 6. Backup Policy Logic (`modules/backupPolicy.bicep`)
-- Daily policy (`2025-02-01` API) with `scheduleRunTimes` (ISO conversion) and daily retention.
-- Weekly policy (`2025-02-01` API) uses:
-  - `scheduleRunFrequency=Weekly`, `scheduleRunDays`, ISO run times.
-  - Weekly retention: pipelines accept weeks and convert to days for Bicep; in Bicep, weeklyRetentionDays must be >=7 (represents >=1 week).
-  - Conditional monthly/yearly blocks built via `union()` only when enabled.
+ - `remediationPolicyKind`: When `Both` is deployed, choose which policy remediation uses (`Daily` or `Weekly`). Default: `Weekly`.
   - Instant restore retention forced to 5.
 - Common fields: `policyType='V1'`, `instantRPDetails={}`, `tieringPolicy` set to `DoNotTier`.
 
