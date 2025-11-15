@@ -251,7 +251,11 @@ stages:
           foreach ($r in $targetRegions) {
             $vaultName = "rsv-$r"
             $vaultRg   = "rsv-rg-$r"
-            $policyName = "backup-policy-$r"
+            $basePolicyName = "backup-policy-$r"
+            $freq = '${{ parameters.backupFrequency }}'
+            if ($freq -eq 'Both') { $policyName = "$basePolicyName-weekly" }
+            elseif ($freq -eq 'Weekly') { $policyName = $basePolicyName }
+            else { $policyName = $basePolicyName }
             $uaiId = "/subscriptions/$subscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
 
             Write-Host "Deploying policy assignment: region=$r vault=$vaultName policy=$policyName tag=${{ parameters.vmTagName }}=${{ parameters.vmTagValue }}"
