@@ -50,13 +50,6 @@ parameters:
     - BackupContributor
   default: Contributor
   displayName: 'Remediation Role (Contributor or BackupContributor)'
-- name: remediationPolicyKind
-  type: string
-  values:
-    - Daily
-    - Weekly
-  default: Weekly
-  displayName: 'When Both is deployed, which policy should remediation use?'
 - name: dailyRetentionDays
   type: number
   default: 14
@@ -263,9 +256,8 @@ stages:
             $vaultRg   = "rsv-rg-$r"
             $basePolicyName = "backup-policy-$r"
             $freq = '${{ parameters.backupFrequency }}'
-            if ($freq -eq 'Both') {
-              if ('${{ parameters.remediationPolicyKind }}' -eq 'Daily') { $policyName = "$basePolicyName-daily" } else { $policyName = "$basePolicyName-weekly" }
-            } elseif ($freq -eq 'Weekly') { $policyName = $basePolicyName }
+            if ($freq -eq 'Both') { $policyName = "$basePolicyName-weekly" }
+            elseif ($freq -eq 'Weekly') { $policyName = $basePolicyName }
             else { $policyName = $basePolicyName }
             $uaiId = "/subscriptions/$subscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
 

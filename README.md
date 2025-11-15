@@ -42,10 +42,9 @@ Derived at runtime:
 - Yearly enable flag auto‑computed (`Yearly > 0`).
 
 ### 5. Azure DevOps Pipeline Parameters (`azure-pipelines.yml`)
- - Remediation control: `enableAutoRemediation`, `multiRegionAutoRemediation`, `policyBaselineRegion`, `remediationPolicyKind` (Daily|Weekly when Both), `waitMinutesBeforeRemediation`.
+- Remediation control: `enableAutoRemediation`, `multiRegionAutoRemediation`, `policyBaselineRegion`, `waitMinutesBeforeRemediation`.
 
 Differences vs GitHub:
- - `remediationPolicyKind`: When `Both` is deployed, choose which policy remediation uses (`Daily` or `Weekly`). Default: `Weekly`.
   - Instant restore retention forced to 5.
 - Common fields: `policyType='V1'`, `instantRPDetails={}`, `tieringPolicy` set to `DoNotTier`.
 
