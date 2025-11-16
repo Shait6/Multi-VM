@@ -260,7 +260,7 @@ stages:
             if ($null -ne $assign) {
               $remName = "remediate-vm-backup-$r"
               Write-Host "Starting remediation: $remName"
-              az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ExistingNonCompliant -o none
+              az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ReEvaluateCompliance -o none
             } else {
               Write-Warning "Policy assignment not found after deployment in region $r"
             }

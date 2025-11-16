@@ -207,7 +207,7 @@ jobs:
             if ($null -ne $assign) {
               $remName = "remediate-vm-backup-$r"
               echo "Starting remediation: $remName"
-              az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ExistingNonCompliant -o none
+              az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ReEvaluateCompliance -o none
             } else {
               echo "Warning: Policy assignment not found after deployment in region $r"
             }
