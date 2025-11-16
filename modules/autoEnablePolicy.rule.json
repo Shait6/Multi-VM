@@ -11,14 +11,14 @@
       "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
       "roleDefinitionIds": ["__ROLEDEFID__"],
       "existenceCondition": {
-        "field": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems/properties.sourceResourceId",
+        "field": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems/sourceResourceId",
         "equals": "[field('id')]"
       },
       "deployment": {
         "properties": {
           "mode": "Incremental",
           "parameters": {
-            "vmId": { "value": "[field('fullName')]" },
+            "vmId": { "value": "[field('id')]" },
             "vaultName": { "value": "__VAULT_NAME__" },
             "vaultResourceGroup": { "value": "__VAULT_RG__" },
             "backupPolicyName": { "value": "__BACKUP_POLICY__" }
