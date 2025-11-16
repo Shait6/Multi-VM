@@ -258,9 +258,20 @@ stages:
 
             $assign = az policy assignment show -n $assignName -o json | ConvertFrom-Json
             if ($null -ne $assign) {
+              # Wait for policy evaluation to produce a summary for this assignment (readiness gate)
+              $ready = $false
+              for ($i=0; $i -lt 15 -and -not $ready; $i++) {
+                try {
+                  $sum = az policy state summarize --subscription $subscriptionId --filter "PolicyAssignmentId eq '$($assign.id)'" -o json | ConvertFrom-Json
+                  if ($null -ne $sum -and $null -ne $sum.results -and $sum.results.nonCompliantResources -ge 0) { $ready = $true; break }
+                } catch { }
+                Write-Host "Waiting for policy evaluation ($($i+1)/15) ..."; Start-Sleep -Seconds 60
+              }
+              if (-not $ready) { Write-Warning "Policy evaluation not ready; proceeding with remediation using ReEvaluateCompliance." }
+
               $remName = "remediate-vm-backup-$r"
               Write-Host "Starting remediation: $remName"
-              az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ReEvaluateCompliance -o none
+              az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ReEvaluateCompliance --location-filters $r -o none
             } else {
               Write-Warning "Policy assignment not found after deployment in region $r"
             }
