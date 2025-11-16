@@ -11,8 +11,8 @@
       "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
       "roleDefinitionIds": ["__ROLEDEFID__"],
       "existenceCondition": {
-        "field": "name",
-        "equals": "[concat('__VAULT_NAME__', '/Azure/protectionContainers/protectedItems-', replace(replace(field('fullName'), '/', '-'), ':', '-'))]"
+        "field": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems/properties.sourceResourceId",
+        "equals": "[field('id')]"
       },
       "deployment": {
         "properties": {
