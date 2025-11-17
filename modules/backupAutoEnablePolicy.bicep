@@ -26,6 +26,10 @@ var roleDefinitionIds = [subscriptionResourceId('Microsoft.Authorization/roleDef
 
 // Load the policy rule from an external JSON file and substitute placeholders.
 var rawPolicyRule = loadTextContent('./autoEnablePolicy.rule.json')
+
+// Compute the full policy ID for the selected vault/policy
+var backupPolicyIdResolved = subscriptionResourceId('Microsoft.RecoveryServices/vaults/backupPolicies', vaultName, backupPolicyName)
+
 var policyRule = json(
   replace(
     replace(
@@ -33,7 +37,10 @@ var policyRule = json(
         replace(
           replace(
             replace(
-              replace(rawPolicyRule, '__TAGNAME__', vmTagName),
+              replace(
+                replace(rawPolicyRule, '__TAGNAME__', vmTagName),
+                '__BACKUP_POLICY_ID__', backupPolicyIdResolved
+              ),
               '__TAGVALUE__', vmTagValue
             ),
             '__ROLEDEFID__', roleDefinitionIds[0]
