@@ -29,8 +29,8 @@
                 "apiVersion": "2017-05-10",
                 "name": "[concat('DeployProtection-', uniqueString(parameters('protectedItems')))]",
                 "type": "Microsoft.Resources/deployments",
-                "resourceGroup": "[first(skip(split(parameters('backupPolicyId'), '/'), 4))]",
-                "subscriptionId": "[first(skip(split(parameters('backupPolicyId'), '/'), 2))]",
+                "resourceGroup": "[split(parameters('backupPolicyId'), '/')[4]]",
+                "subscriptionId": "[split(parameters('backupPolicyId'), '/')[2]]",
                 "properties": {
                   "mode": "Incremental",
                   "template": {
@@ -46,7 +46,7 @@
                     "resources": [
                       {
                         "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
-                        "name": "[concat(first(skip(split(parameters('backupPolicyId'), '/'), 8)), '/', parameters('fabricName'), '/', parameters('protectionContainers'), '/', parameters('protectedItems'))]",
+                        "name": "[concat(split(parameters('backupPolicyId'), '/')[8], '/', parameters('fabricName'), '/', parameters('protectionContainers'), '/', parameters('protectedItems'))]",
                         "apiVersion": "2016-06-01",
                         "properties": {
                           "protectedItemType": "Microsoft.Compute/virtualMachines",

@@ -1,279 +1,197 @@
 parameters:
-- name: deploymentLocation
-  type: string
-  values:
-    - westeurope
-    - northeurope
-    - swedencentral
-    - germanywestcentral
-  default: westeurope
-  displayName: 'Subscription Deployment Location'
-- name: enableAutoRemediation
-  type: string
-  values:
-    - 'true'
-    - 'false'
-  default: 'false'
-  displayName: 'Enable Auto-Remediation (DeployIfNotExists)'
-- name: remediationRegions
-  type: string
-  default: ''
-  displayName: 'Comma-separated regions to remediate (empty -> deploymentLocation)'
-- name: backupFrequency
-  type: string
-  values:
-    - Daily
-    - Weekly
-    - Both
-  default: Daily
-  displayName: 'Backup Frequency'
-- name: retentionProfile
-  type: string
-  default: '14|30|0|backup|true'
-  displayName: 'Retention Profile Daily|Weekly|Yearly|TagName|TagValue (Yearly=0 disables yearly tier)'
-- name: dailyRetentionDays
-  type: number
-  default: 14
-  displayName: 'Daily Retention Days'
-- name: weeklyRetentionDays
-  type: number
-  default: 30
-  displayName: 'Weekly Retention Days'
-- name: weeklyBackupDaysOfWeekString
-  type: string
-  default: 'Sunday,Wednesday'
-  displayName: 'Weekly Backup Days (comma separated)'
-- name: backupScheduleTimeString
-  type: string
-  default: '18:30'
-  displayName: 'Backup schedule time (HH:mm, UTC by default)'
-- name: backupTimeZone
-  type: string
-  default: 'UTC'
-  displayName: 'Backup schedule time zone'
-- name: instantRestoreRetentionDays
-  type: number
-  default: 2
-  displayName: 'Instant Restore retention (days)'
-- name: waitMinutesBeforeRemediation
-  type: number
-  default: 5
-  displayName: 'Wait minutes before remediation (buffer after deploy)'
-- name: enableMonthlyRetention
-  type: string
-  values:
-   - 'true'
-   - 'false'
-  default: 'false'
-  displayName: 'Enable Monthly Retention (Weekly policy)'
-- name: monthlyRetentionMonths
-  type: number
-  default: 60
-  displayName: 'Monthly Retention Months'
-- name: monthlyWeeksOfMonth
-  type: string
-  default: 'First'
-  displayName: "Monthly Weeks (e.g. 'First,Last')"
-- name: monthlyDaysOfWeek
-  type: string
-  default: 'Sunday'
-  displayName: "Monthly Days (e.g. 'Sunday,Wednesday')"
-- name: enableYearlyRetention
-  type: string
-  values:
-   - 'true'
-   - 'false'
-  default: 'false'
-  displayName: 'Enable Yearly Retention (Weekly policy)'
-- name: yearlyRetentionYears
-  type: number
-  default: 10
-  displayName: 'Yearly Retention Years'
-- name: yearlyMonthsOfYear
-  type: string
-  default: 'January,February,March'
-  displayName: "Yearly Months (e.g. 'January,February,March')"
-- name: yearlyWeeksOfMonth
-  type: string
-  default: 'First'
-  displayName: "Yearly Weeks (e.g. 'First')"
-- name: yearlyDaysOfWeek
-  type: string
-  default: 'Sunday'
-  displayName: "Yearly Days (e.g. 'Sunday')"
-  
-pool:
-  vmImage: 'windows-latest'
+  - name: serviceConnection
+    type: string
+    default: 'bicep_deploy_SC'
+    displayName: 'Azure Service Connection'
+  - name: subscriptionId
+    type: string
+    default: ''
+    displayName: 'Target Subscription Id (blank -> service connection default)'
+  - name: deploymentLocation
+    type: string
+    values:
+      - westeurope
+      - northeurope
+      - swedencentral
+      - germanywestcentral
+    default: westeurope
+    displayName: 'Subscription Deployment Location'
+  - name: backupFrequency
+    type: string
+    values:
+      - Daily
+      - Weekly
+      - Both
+    default: Daily
+    displayName: 'Backup Frequency'
+  - name: retentionProfile
+    type: string
+    default: '14|30|0|backup|true'
+    displayName: 'Retention Profile Daily|Weekly|Yearly|TagName|TagValue (Yearly=0 disables yearly tier)'
+  - name: weeklyBackupDaysOfWeekString
+    type: string
+    default: 'Sunday,Wednesday'
+    displayName: 'Weekly Backup Days (comma separated)'
+  - name: backupScheduleTimeString
+    type: string
+    default: '23:00'
+    displayName: 'Daily schedule time (HH:mm)'
+  - name: backupTimeZone
+    type: string
+    default: 'UTC'
+    displayName: 'Backup Time Zone'
+  - name: instantRestoreRetentionDays
+    type: number
+    default: 5
+    displayName: 'Instant Restore Retention Days (1..5)'
+  - name: enableMonthlyRetention
+    type: string
+    values: ['true','false']
+    default: 'false'
+    displayName: 'Enable Monthly Tier'
+  - name: monthlyRetentionMonths
+    type: number
+    default: 0
+    displayName: 'Monthly Retention (months)'
+  - name: monthlyWeeksOfMonth
+    type: string
+    default: 'First'
+    displayName: 'Monthly Weeks Of Month'
+  - name: monthlyDaysOfWeek
+    type: string
+    default: 'Sunday'
+    displayName: 'Monthly Days Of Week'
+  - name: yearlyMonthsOfYear
+    type: string
+    default: 'January'
+    displayName: 'Yearly Months Of Year'
+  - name: yearlyWeeksOfMonth
+    type: string
+    default: 'First'
+    displayName: 'Yearly Weeks Of Month'
+  - name: yearlyDaysOfWeek
+    type: string
+    default: 'Sunday'
+    displayName: 'Yearly Days Of Week'
+  - name: enableAutoRemediation
+    type: string
+    values: ['true','false']
+    default: 'false'
+    displayName: 'Enable Auto-Remediation (DeployIfNotExists)'
+  - name: remediationRegions
+    type: string
+    default: ''
+    displayName: 'Comma-separated regions to remediate (empty -> deploymentLocation)'
+  - name: waitMinutesBeforeRemediation
+    type: number
+    default: 5
+    displayName: 'Minutes to wait before remediation'
 
 stages:
-- stage: Deploy
-  jobs:
-  - job: BuildAndDeployMultiRegion
-    displayName: 'Deploy multi-region backup (subscription scope)'
-    steps:
-    - task: AzureCLI@2
-      displayName: 'Build Bicep (syntax check)'
-      inputs:
-        azureSubscription: 'bicep_deploy_SC'
-        scriptType: 'ps'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          try { az bicep version | Out-Null } catch { az bicep install }
-          az bicep build --file main.bicep --outdir bicep-build
-    - task: AzureCLI@2
-      displayName: 'Subscription deployment with parameters'
-      inputs:
-        azureSubscription: 'bicep_deploy_SC'
-        scriptType: 'ps'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          if (-not [string]::IsNullOrWhiteSpace("$(subscriptionId)")) {
-            az account set --subscription "$(subscriptionId)"
-          } else {
-            Write-Host "No subscriptionId variable set; using service connection's default context."
-          }
-          $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
-          $weeklyDays = "${{ parameters.weeklyBackupDaysOfWeekString }}".Split(',') | ForEach-Object { $_.Trim() }
-          $runTimes = @("${{ parameters.backupScheduleTimeString }}")
-          # Parse retentionProfile DailyDays|WeeklyWeeks|YearlyYears
-          $profileRaw = "${{ parameters.retentionProfile }}"
-          $profileParts = $profileRaw.Split('|')
-          if ($profileParts.Count -lt 5) { throw "Invalid retentionProfile format '$profileRaw'. Expected Daily|Weekly|Yearly|TagName|TagValue (e.g. 14|5|0|backup|true)." }
-          $dailyRetention  = [int]$profileParts[0]
-          $weeklyWeeks     = [int]$profileParts[1]
-          $yearlyYears     = [int]$profileParts[2]
-          $tagName         = $profileParts[3]
-          $tagValue        = $profileParts[4]
-          $enableYearly = $yearlyYears -gt 0
-          if ($dailyRetention -lt 7) { throw "dailyRetentionDays ($dailyRetention) must be >= 7" }
-          if ($weeklyWeeks -lt 1) { throw "weeklyRetentionWeeks ($weeklyWeeks) must be >= 1" }
-          $weeklyRetention = $weeklyWeeks * 7
-          Write-Host "Parsed retention profile => DailyDays=$dailyRetention WeeklyWeeks=$weeklyWeeks (-> $weeklyRetention days) YearlyYears=$yearlyYears TagName=$tagName TagValue=$tagValue EnableYearly=$enableYearly"
-          # Instant restore rules: Weekly frequency forces 5 days; Daily/Both clamp to 1..5
-          $instantInput = [int]${{ parameters.instantRestoreRetentionDays }}
-          $instantClamped = [Math]::Min([Math]::Max($instantInput,1),5)
-          if ("${{ parameters.backupFrequency }}" -eq 'Weekly') { $instantEffective = 5 } else { $instantEffective = $instantClamped }
-          Write-Host "Instant restore retention effective=$instantEffective (input=$instantInput clamped=$instantClamped)"
-          # Set remediation role to Contributor (fixed)
-          $roleGuid = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
-          Write-Host "Selected remediation role: Contributor ($roleGuid)"
-          $paramContent = @{
-            backupFrequency        = @{ value = "${{ parameters.backupFrequency }}" }
-            dailyRetentionDays     = @{ value = $dailyRetention }
-            weeklyRetentionDays    = @{ value = $weeklyRetention }
-            weeklyBackupDaysOfWeek = @{ value = $weeklyDays }
-            backupScheduleRunTimes = @{ value = $runTimes }
-            backupTimeZone         = @{ value = "${{ parameters.backupTimeZone }}" }
-            instantRestoreRetentionDays = @{ value = $instantEffective }
-            enableMonthlyRetention = @{ value = ('${{ parameters.enableMonthlyRetention }}' -eq 'true') }
-            monthlyRetentionMonths = @{ value = ${{ parameters.monthlyRetentionMonths }} }
-            monthlyWeeksOfMonth    = @{ value = ("${{ parameters.monthlyWeeksOfMonth }}".Split(',') | ForEach-Object { $_.Trim() }) }
-            monthlyDaysOfWeek      = @{ value = ("${{ parameters.monthlyDaysOfWeek }}".Split(',') | ForEach-Object { $_.Trim() }) }
-            enableYearlyRetention  = @{ value = $enableYearly }
-            yearlyRetentionYears   = @{ value = $yearlyYears }
-            yearlyMonthsOfYear     = @{ value = ("${{ parameters.yearlyMonthsOfYear }}".Split(',') | ForEach-Object { $_.Trim() }) }
-            yearlyWeeksOfMonth     = @{ value = ("${{ parameters.yearlyWeeksOfMonth }}".Split(',') | ForEach-Object { $_.Trim() }) }
-            yearlyDaysOfWeek       = @{ value = ("${{ parameters.yearlyDaysOfWeek }}".Split(',') | ForEach-Object { $_.Trim() }) }
-            remediationRoleDefinitionId = @{ value = $roleGuid }
-          }
-          $paramContent | ConvertTo-Json -Depth 4 | Out-File bicep-params.json -Encoding utf8
-          Write-Host "Starting deployment $deployName with backupFrequency=${{ parameters.backupFrequency }}"
-          $failed = $false
-          try {
-            az deployment sub create --name $deployName --location "${{ parameters.deploymentLocation }}" --template-file main.bicep --parameters @bicep-params.json -o json > deployment-result.json
-          } catch {
-            Write-Host "Deployment failed. Collecting diagnostics..."; $failed = $true
-          }
-          if ($failed) {
-            az deployment sub show --name $deployName -o json > deployment-show.json 2>$null
-            az deployment operation sub list --name $deployName -o json > deployment-operations.json 2>$null
-            Write-Host "Diagnostics written (deployment-show.json, deployment-operations.json)"; exit 1
-          }
-          $outputs = az deployment sub show --name $deployName --query properties.outputs -o json | ConvertFrom-Json
-          $outputs | ConvertTo-Json -Depth 10 | Out-File deployment-outputs.json -Encoding utf8
-          Write-Host "Vaults:" ($outputs.vaultIds.value -join ', ')
-          Write-Host "Policies:" ($outputs.backupPolicyNames.value -join ', ')
-          Write-Host "UAIs:" ($outputs.userAssignedIdentityIds.value -join ', ')
-          Write-Host "Principals:" ($outputs.userAssignedIdentityPrincipalIds.value -join ', ')
-          Write-Host "Outputs saved -> deployment-outputs.json"
-
-- stage: Remediate
-  displayName: 'Auto-enable policy remediation'
-  condition: and(succeeded(), eq('${{ parameters.enableAutoRemediation }}','true'))
-  dependsOn: Deploy
-  jobs:
-  - job: RemediateTaggedVMs
-    displayName: 'Assign policy and start remediation'
-    steps:
-    - task: AzureCLI@2
-      displayName: 'Run remediation for target regions'
-      inputs:
-        azureSubscription: 'bicep_deploy_SC'
-        scriptType: 'ps'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          $subscriptionId = "$(subscriptionId)"
-          if (-not [string]::IsNullOrWhiteSpace($subscriptionId)) {
-            az account set --subscription $subscriptionId
-          } else {
-            Write-Host "No subscriptionId variable set; using service connection's default context."
-          }
-
-          $wait = [int]${{ parameters.waitMinutesBeforeRemediation }}
-          if ($wait -gt 0) { Write-Host "Waiting $wait minute(s) before remediation..."; Start-Sleep -Seconds ($wait * 60) }
-
-          $regionsRaw = '${{ parameters.remediationRegions }}'
-          if ([string]::IsNullOrWhiteSpace($regionsRaw)) { $targetRegions = @('${{ parameters.deploymentLocation }}') } else { $targetRegions = $regionsRaw.Split(',') | ForEach-Object { $_.Trim() } }
-
-          foreach ($r in $targetRegions) {
-            $vaultName = "rsv-$r"
-            $vaultRg   = "rsv-rg-$r"
-            $basePolicyName = "backup-policy-$r"
-            $freq = '${{ parameters.backupFrequency }}'
-            if ($freq -eq 'Both') { $policyName = "$basePolicyName-weekly" } else { $policyName = $basePolicyName }
-            $uaiId = "/subscriptions/$subscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
-            $assignName = "enable-vm-backup-$r"
-
-            # Re-parse retentionProfile for tags
-            $profileRaw = "${{ parameters.retentionProfile }}"
-            $parts = $profileRaw.Split('|')
-            if ($parts.Count -lt 5) { throw "Invalid retentionProfile format '$profileRaw'. Expected Daily|Weekly|Yearly|TagName|TagValue." }
-            $tagName  = $parts[3]
-            $tagValue = $parts[4]
-            Write-Host "Deploying policy assignment: region=$r vault=$vaultName policy=$policyName tag=$tagName=$tagValue"
-            az deployment sub create `
-              --name "remediate-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" `
-              --location $r `
-              --template-file modules/backupAutoEnablePolicy.bicep `
-              --parameters `
-                policyAssignmentName=$assignName `
-                assignmentLocation=$r `
-                assignmentIdentityId=$uaiId `
-                vmTagName=$tagName `
-                vmTagValue=$tagValue `
-                vaultName=$vaultName `
-                vaultResourceGroup=$vaultRg `
-                backupPolicyName=$policyName `
-              -o none
-
-            $assign = az policy assignment show -n $assignName -o json | ConvertFrom-Json
-            if ($null -ne $assign) {
-              # Wait for policy evaluation to produce a summary for this assignment (readiness gate)
-              $ready = $false
-              for ($i=0; $i -lt 15 -and -not $ready; $i++) {
-                try {
-                  $sum = az policy state summarize --subscription $subscriptionId --filter "PolicyAssignmentId eq '$($assign.id)'" -o json | ConvertFrom-Json
-                  if ($null -ne $sum -and $null -ne $sum.results -and $sum.results.nonCompliantResources -ge 0) { $ready = $true; break }
-                } catch { }
-                Write-Host "Waiting for policy evaluation ($($i+1)/15) ..."; Start-Sleep -Seconds 60
-              }
-              if (-not $ready) { Write-Warning "Policy evaluation not ready; proceeding with remediation using ReEvaluateCompliance." }
-
-              $remName = "remediate-vm-backup-$r"
-              Write-Host "Starting remediation: $remName"
-              az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ReEvaluateCompliance --location-filters $r -o none
-            } else {
-              Write-Warning "Policy assignment not found after deployment in region $r"
-            }
-          }
+  - stage: BuildAndDeploy
+    displayName: 'Build & Deploy Backup Infrastructure'
+    jobs:
+      - job: BuildDeploy
+        displayName: 'Build Bicep and Deploy'
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: 'Bicep Build (syntax)'
+            inputs:
+              azureSubscription: '${{ parameters.serviceConnection }}'
+              scriptType: 'ps'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                try { az bicep version | Out-Null } catch { az bicep install }
+                az bicep build --file main.bicep --outdir bicep-build
+          - task: AzureCLI@2
+            displayName: 'Subscription Deployment'
+            inputs:
+              azureSubscription: '${{ parameters.serviceConnection }}'
+              scriptType: 'ps'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                $subId = '${{ parameters.subscriptionId }}'
+                if (-not [string]::IsNullOrWhiteSpace($subId)) { az account set --subscription $subId }
+                $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
+                $weeklyDays = "${{ parameters.weeklyBackupDaysOfWeekString }}".Split(',') | ForEach-Object { $_.Trim() }
+                $runTimes   = @("${{ parameters.backupScheduleTimeString }}")
+                $profileRaw = "${{ parameters.retentionProfile }}"
+                $parts = $profileRaw.Split('|')
+                if ($parts.Count -lt 5) { throw "Invalid retentionProfile format '$profileRaw'. Expected Daily|Weekly|Yearly|TagName|TagValue." }
+                $dailyRetention = [int]$parts[0]
+                $weeklyWeeks    = [int]$parts[1]
+                $yearlyYears    = [int]$parts[2]
+                $tagName        = $parts[3]
+                $tagValue       = $parts[4]
+                if ($dailyRetention -lt 7) { throw "dailyRetentionDays ($dailyRetention) must be >=7" }
+                if ($weeklyWeeks -lt 1) { throw "weeklyWeeks ($weeklyWeeks) must be >=1" }
+                $weeklyRetention = $weeklyWeeks * 7
+                $enableYearly = $yearlyYears -gt 0
+                $instantInput = [int]${{ parameters.instantRestoreRetentionDays }}
+                $instantClamped = [Math]::Min([Math]::Max($instantInput,1),5)
+                if ("${{ parameters.backupFrequency }}" -eq 'Weekly') { $instantEffective = 5 } else { $instantEffective = $instantClamped }
+                $roleGuid = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
+                $paramContent = @{
+                  backupFrequency        = @{ value = "${{ parameters.backupFrequency }}" }
+                  dailyRetentionDays     = @{ value = $dailyRetention }
+                  weeklyRetentionDays    = @{ value = $weeklyRetention }
+                  weeklyBackupDaysOfWeek = @{ value = $weeklyDays }
+                  backupScheduleRunTimes = @{ value = $runTimes }
+                  backupTimeZone         = @{ value = "${{ parameters.backupTimeZone }}" }
+                  instantRestoreRetentionDays = @{ value = $instantEffective }
+                  enableMonthlyRetention = @{ value = ('${{ parameters.enableMonthlyRetention }}' -eq 'true') }
+                  monthlyRetentionMonths = @{ value = ${{ parameters.monthlyRetentionMonths }} }
+                  monthlyWeeksOfMonth    = @{ value = ("${{ parameters.monthlyWeeksOfMonth }}".Split(',') | ForEach-Object { $_.Trim() }) }
+                  monthlyDaysOfWeek      = @{ value = ("${{ parameters.monthlyDaysOfWeek }}".Split(',') | ForEach-Object { $_.Trim() }) }
+                  enableYearlyRetention  = @{ value = $enableYearly }
+                  yearlyRetentionYears   = @{ value = $yearlyYears }
+                  yearlyMonthsOfYear     = @{ value = ("${{ parameters.yearlyMonthsOfYear }}".Split(',') | ForEach-Object { $_.Trim() }) }
+                  yearlyWeeksOfMonth     = @{ value = ("${{ parameters.yearlyWeeksOfMonth }}".Split(',') | ForEach-Object { $_.Trim() }) }
+                  yearlyDaysOfWeek       = @{ value = ("${{ parameters.yearlyDaysOfWeek }}".Split(',') | ForEach-Object { $_.Trim() }) }
+                  remediationRoleDefinitionId = @{ value = $roleGuid }
+                }
+                $paramContent | ConvertTo-Json -Depth 4 | Out-File bicep-params.json -Encoding utf8
+                Write-Host "Starting deployment $deployName backupFrequency=${{ parameters.backupFrequency }}"
+                $failed = $false
+                try { az deployment sub create --name $deployName --location "${{ parameters.deploymentLocation }}" --template-file main.bicep --parameters @bicep-params.json -o json > deployment-result.json } catch { $failed = $true }
+                if ($failed) {
+                  az deployment sub show --name $deployName -o json > deployment-show.json 2>$null
+                  az deployment operation sub list --name $deployName -o json > deployment-operations.json 2>$null
+                  Write-Host "Deployment failed; diagnostics captured."; exit 1
+                }
+                $outputs = az deployment sub show --name $deployName --query properties.outputs -o json | ConvertFrom-Json
+                $outputs | ConvertTo-Json -Depth 10 | Out-File deployment-outputs.json -Encoding utf8
+                Write-Host "Outputs saved -> deployment-outputs.json"
+  - stage: Remediate
+    displayName: 'Auto-enable Backup Remediation'
+    dependsOn: BuildAndDeploy
+    condition: and(succeeded(), eq('${{ parameters.enableAutoRemediation }}','true'))
+    jobs:
+      - job: RemediateTaggedVMs
+        displayName: 'Run Remediation Script'
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: 'Invoke Remediation Script'
+            inputs:
+              azureSubscription: '${{ parameters.serviceConnection }}'
+              scriptType: 'ps'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                $subId = '${{ parameters.subscriptionId }}'
+                if (-not [string]::IsNullOrWhiteSpace($subId)) { az account set --subscription $subId }
+                Write-Host "Running remediation script regions='${{ parameters.remediationRegions }}'"
+                . ./scripts/Invoke-BackupRemediation.ps1 -FailOnError
+                Write-Host "Remediation summary:"; Get-Content backup-remediation-summary.json | Write-Host
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Remediation Summary'
+            inputs:
+              PathtoPublish: 'backup-remediation-summary.json'
+              ArtifactName: 'remediation-summary'
+              publishLocation: 'Container'
 

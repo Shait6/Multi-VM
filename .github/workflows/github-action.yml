@@ -168,59 +168,9 @@ jobs:
         with:
           creds: ${{ secrets.serivcon }}
 
-      - name: Remediate tagged VMs (baseline region)
+      - name: Invoke automated remediation (per-region)
         shell: pwsh
         run: |
-          az account set --subscription "$env:SUBSCRIPTION_ID"
-
-          $wait = [int]$env:WAIT_MINUTES
-          if ($wait -gt 0) { Write-Host "Waiting $wait minute(s) before remediation..."; Start-Sleep -Seconds ($wait * 60) }
-
-          $regionsRaw = $env:REMEDIATION_REGIONS
-          if ([string]::IsNullOrWhiteSpace($regionsRaw)) { $targetRegions = @($env:DEPLOYMENT_LOCATION) } else { $targetRegions = $regionsRaw.Split(',') | ForEach-Object { $_.Trim() } }
-
-          foreach ($r in $targetRegions) {
-            $vaultName = "rsv-$r"
-            $vaultRg   = "rsv-rg-$r"
-            $basePolicyName = "backup-policy-$r"
-            if ($env:BACKUP_FREQUENCY -eq 'Both') { $policyName = "$basePolicyName-weekly" } else { $policyName = $basePolicyName }
-            $uaiId = "/subscriptions/$env:SUBSCRIPTION_ID/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
-            $assignName = "enable-vm-backup-$r"
-
-            echo "Deploying policy assignment for region=$r vault=$vaultName policy=$policyName"
-            az deployment sub create `
-              --name "remediate-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" `
-              --location $r `
-              --template-file modules/backupAutoEnablePolicy.bicep `
-              --parameters `
-                policyAssignmentName=$assignName `
-                assignmentLocation=$r `
-                assignmentIdentityId=$uaiId `
-                vmTagName=$env:VM_TAG_NAME `
-                vmTagValue=$env:VM_TAG_VALUE `
-                vaultName=$vaultName `
-                vaultResourceGroup=$vaultRg `
-                backupPolicyName=$policyName `
-              -o none
-
-            $assign = az policy assignment show -n $assignName -o json | ConvertFrom-Json
-            if ($null -ne $assign) {
-              # Wait for policy evaluation to produce a summary for this assignment (readiness gate)
-              $ready = $false
-              for ($i=0; $i -lt 15 -and -not $ready; $i++) {
-                try {
-                  $sum = az policy state summarize --subscription "$env:SUBSCRIPTION_ID" --filter "PolicyAssignmentId eq '$($assign.id)'" -o json | ConvertFrom-Json
-                  if ($null -ne $sum -and $null -ne $sum.results -and $sum.results.nonCompliantResources -ge 0) { $ready = $true; break }
-                } catch { }
-                Write-Host "Waiting for policy evaluation ($($i+1)/15) ..."; Start-Sleep -Seconds 60
-              }
-              if (-not $ready) { Write-Warning "Policy evaluation not ready; proceeding with remediation using ReEvaluateCompliance." }
-
-              $remName = "remediate-vm-backup-$r"
-              echo "Starting remediation: $remName"
-              az policy remediation create -n $remName --policy-assignment $assign.id --resource-discovery-mode ReEvaluateCompliance --location-filters $r -o none
-            } else {
-              echo "Warning: Policy assignment not found after deployment in region $r"
-            }
-          }
+          . ./scripts/Invoke-BackupRemediation.ps1 -FailOnError
+          Write-Host "Remediation summary:"; Get-Content backup-remediation-summary.json | Write-Host
           
