@@ -2,7 +2,8 @@
   "if": {
     "allOf": [
       { "field": "type", "equals": "Microsoft.Compute/virtualMachines" },
-      { "field": "tags['__TAGNAME__']", "equals": "__TAGVALUE__" }
+      { "field": "tags['__TAGNAME__']", "equals": "__TAGVALUE__" },
+      { "field": "location", "equals": "__REGION__" }
     ]
   },
   "then": {

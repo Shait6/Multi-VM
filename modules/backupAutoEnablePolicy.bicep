@@ -26,7 +26,27 @@ var roleDefinitionIds = [subscriptionResourceId('Microsoft.Authorization/roleDef
 
 // Load the policy rule from an external JSON file and substitute placeholders.
 var rawPolicyRule = loadTextContent('./autoEnablePolicy.rule.json')
-var policyRule = json(replace(replace(replace(replace(replace(replace(rawPolicyRule, '__TAGNAME__', vmTagName), '__TAGVALUE__', vmTagValue), '__ROLEDEFID__', roleDefinitionIds[0]), '__VAULT_NAME__', vaultName), '__VAULT_RG__', vaultResourceGroup), '__BACKUP_POLICY__', backupPolicyName))
+var policyRule = json(
+  replace(
+    replace(
+      replace(
+        replace(
+          replace(
+            replace(
+              replace(rawPolicyRule, '__TAGNAME__', vmTagName),
+              '__TAGVALUE__', vmTagValue
+            ),
+            '__ROLEDEFID__', roleDefinitionIds[0]
+          ),
+          '__VAULT_NAME__', vaultName
+        ),
+        '__VAULT_RG__', vaultResourceGroup
+      ),
+      '__BACKUP_POLICY__', backupPolicyName
+    ),
+    '__REGION__', assignmentLocation
+  )
+)
 
 resource policyDef 'Microsoft.Authorization/policyDefinitions@2021-06-01' = {
   name: policyName
