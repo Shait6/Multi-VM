@@ -41,9 +41,9 @@
                 "name": "[concat(
                   parameters('vaultName'),
                   '/Azure/protectionContainers/',
-                  concat('VMAppContainer;Compute;', split(parameters('vmId'), '/')[2], ';', split(parameters('vmId'), '/')[4], ';', last(split(parameters('vmId'), '/'))),
+                  concat('IaasVMContainer;Compute;', split(parameters('vmId'), '/')[2], ';', split(parameters('vmId'), '/')[4], ';', last(split(parameters('vmId'), '/'))),
                   '/protectedItems/',
-                  concat('VM;iaasvmcontainer;Compute;', split(parameters('vmId'), '/')[2], ';', split(parameters('vmId'), '/')[4], ';', last(split(parameters('vmId'), '/')))
+                  concat('VM;IaasVMContainer;Compute;', split(parameters('vmId'), '/')[2], ';', split(parameters('vmId'), '/')[4], ';', last(split(parameters('vmId'), '/')))
                 )]",
                 "properties": {
                   "protectedItemType": "AzureIaasVMProtectedItem",
