@@ -13,7 +13,7 @@ param skuTier string = 'Standard'
 param publicNetworkAccess string = 'Enabled'
  
 
-resource recoveryServicesVault 'Microsoft.RecoveryServices/vaults@2025-02-01' = {
+resource recoveryServicesVault 'Microsoft.RecoveryServices/vaults@2023-04-01' = {
   name: vaultName
   location: location
   sku: {
