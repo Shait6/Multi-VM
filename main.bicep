@@ -130,6 +130,17 @@ module rbac './modules/roleAssignment.bicep' = [for (region, i) in regions: {
   dependsOn: [uais[i]]
 }]
 
+// Ensure the remediation UAI also has Contributor at subscription scope
+module rbacSub './modules/roleAssignmentSubscription.bicep' = [for (region, i) in regions: {
+  name: 'roleAssignmentSubModule-${region}'
+  params: {
+    principalId: uais[i].outputs.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: remediationRoleDefinitionId
+  }
+  dependsOn: [uais[i]]
+}]
+
 // Export outputs as arrays for all regions
 output vaultIds array = [for (region, i) in regions: vaults[i].outputs.vaultId]
 output backupPolicyIds array = [for (region, i) in regions: policies[i].outputs.backupPolicyIds]
