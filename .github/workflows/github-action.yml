@@ -43,28 +43,7 @@ on:
         type: choice
         options:
           - 'UTC'
-          - 'GMT Standard Time'
-          - 'W. Europe Standard Time'
-          - 'Romance Standard Time'
           - 'Central Europe Standard Time'
-          - 'E. Europe Standard Time'
-          - 'Morocco Standard Time'
-          - 'Greenwich Standard Time'
-          - 'South Africa Standard Time'
-          - 'Turkey Standard Time'
-          - 'Israel Standard Time'
-          - 'Arabian Standard Time'
-          - 'Russian Standard Time'
-          - 'India Standard Time'
-          - 'China Standard Time'
-          - 'Singapore Standard Time'
-          - 'Tokyo Standard Time'
-          - 'AUS Eastern Standard Time'
-          - 'New Zealand Standard Time'
-          - 'Pacific Standard Time'
-          - 'Mountain Standard Time'
-          - 'Central Standard Time'
-          - 'Eastern Standard Time'
       remediationRegions:
         description: 'Comma-separated regions to remediate (empty -> deploymentLocation)'
         required: false
