@@ -33,7 +33,7 @@ on:
         type: choice
         options: ['Daily','Weekly','Both']
       backupScheduleTime:
-        description: 'Backup schedule time (HH:mm)'
+        description: 'Backup schedule time (HH:mm) increments of 30 minutes'
         required: false
         default: '18:30'
       backupTimeZone:
