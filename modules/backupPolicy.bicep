@@ -16,7 +16,32 @@ param dailyRetentionDays int = 14
 @description('Retention in days for weekly backups (>=7; converted to weeks)')
 @minValue(7)
 param weeklyRetentionDays int = 30
-@description('Time zone for schedule')
+@description('Time zone for schedule (Windows Time Zone ID)')
+@allowed([
+  'UTC'
+  'GMT Standard Time'               // UK/Ireland
+  'W. Europe Standard Time'         // Amsterdam, Berlin, Rome, Stockholm, Vienna
+  'Romance Standard Time'           // Brussels, Copenhagen, Madrid, Paris
+  'Central Europe Standard Time'    // Belgrade, Bratislava, Budapest, Prague
+  'E. Europe Standard Time'         // Athens, Bucharest
+  'Morocco Standard Time'
+  'Greenwich Standard Time'
+  'South Africa Standard Time'
+  'Turkey Standard Time'
+  'Israel Standard Time'
+  'Arabian Standard Time'
+  'Russian Standard Time'
+  'India Standard Time'
+  'China Standard Time'
+  'Singapore Standard Time'
+  'Tokyo Standard Time'
+  'AUS Eastern Standard Time'       // Sydney, Melbourne
+  'New Zealand Standard Time'
+  'Pacific Standard Time'
+  'Mountain Standard Time'
+  'Central Standard Time'
+  'Eastern Standard Time'
+])
 param backupTimeZone string = 'UTC'
 
 // Retained unused parameters (monthly/yearly + instant restore) to avoid breaking callers
