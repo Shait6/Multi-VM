@@ -77,7 +77,9 @@ resource policyAssign 'Microsoft.Authorization/policyAssignments@2021-06-01' = {
     displayName: 'Enable VM backup for tagged VMs - ${assignmentLocation}'
     description: 'Assign DeployIfNotExists policy to enable VM backup for VMs with the tag.'
     policyDefinitionId: policyDef.id
-    parameters: {}
+    parameters: {
+      location: { value: assignmentLocation }
+    }
   }
   identity: {
     type: 'UserAssigned'

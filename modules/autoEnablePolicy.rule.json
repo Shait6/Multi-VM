@@ -3,7 +3,7 @@
     "allOf": [
       { "field": "type", "equals": "Microsoft.Compute/virtualMachines" },
       { "field": "tags['__TAGNAME__']", "equals": "__TAGVALUE__" },
-      { "field": "location", "equals": "__REGION__" }
+      { "field": "location", "equals": "[parameters('location')]" }
     ]
   },
   "then": {
@@ -23,7 +23,8 @@
               "protectionContainers": { "type": "String" },
               "protectedItems": { "type": "String" },
               "vmResourceGroup": { "type": "String" },
-              "sourceResourceId": { "type": "String" }
+              "sourceResourceId": { "type": "String" },
+              "location": { "type": "String" }
             },
             "resources": [
               {
@@ -63,7 +64,8 @@
                     "protectionContainers": { "value": "[parameters('protectionContainers')]" },
                     "protectedItems": { "value": "[parameters('protectedItems')]" },
                     "vmResourceGroup": { "value": "[parameters('vmResourceGroup')]" },
-                    "sourceResourceId": { "value": "[parameters('sourceResourceId')]" }
+                    "sourceResourceId": { "value": "[parameters('sourceResourceId')]" },
+                    "location": { "value": "[parameters('location')]" }
                   }
                 }
               }
@@ -75,7 +77,8 @@
             "protectionContainers": { "value": "[concat('iaasvmcontainer;iaasvmcontainerv2;', split(field('id'), '/')[4], ';', field('name'))]" },
             "protectedItems": { "value": "[concat('vm;iaasvmcontainerv2;', split(field('id'), '/')[4], ';', field('name'))]" },
             "vmResourceGroup": { "value": "[split(field('id'), '/')[4]]" },
-            "sourceResourceId": { "value": "[field('id')]" }
+            "sourceResourceId": { "value": "[field('id')]" },
+            "location": { "value": "[field('location')]" }
           }
         }
       }
