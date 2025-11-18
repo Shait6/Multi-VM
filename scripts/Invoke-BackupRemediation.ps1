@@ -76,7 +76,13 @@ foreach($r in $targetRegions) {
   $vaultName = "rsv-$r"
   $vaultRg   = "rsv-rg-$r"
   $basePolicyName = "backup-policy-$r"
-  if($BackupFrequency -eq 'Both') { $policyName = "$basePolicyName-weekly" } else { $policyName = $basePolicyName }
+  if($BackupFrequency -eq 'Both') {
+    $policyName = "$basePolicyName-weekly"
+  } elseif ($BackupFrequency -eq 'Weekly') {
+    $policyName = "$basePolicyName-weekly"
+  } else {
+    $policyName = "$basePolicyName-daily"
+  }
   $assignName = "enable-vm-backup-$r"
 
   Write-Host "--- Region: $r ---"
