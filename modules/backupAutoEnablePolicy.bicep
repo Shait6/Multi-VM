@@ -68,11 +68,8 @@ resource policyDef 'Microsoft.Authorization/policyDefinitions@2021-06-01' = {
       createdBy: 'VM_Backup_Solution'
     }
     policyRule: policyRule
-    details: {
-    evaluationDelay: 'AfterProvisioning'
+    }
   }
-}
-
 resource policyAssign 'Microsoft.Authorization/policyAssignments@2021-06-01' = {
   name: policyAssignmentName
   location: assignmentLocation
