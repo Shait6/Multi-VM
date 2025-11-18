@@ -68,8 +68,11 @@ The template still exposes `remediationRoleDefinitionId` with this default, but 
 - Effect deploys protected item resource if VM with tag lacks backup.
 - Remediation started explicitly (GitHub second job, ADO remediation stage).
 
-### 8.1 Automated Remediation Script (`Invoke-BackupRemediation.ps1`)
-The remediation lifecycle is now encapsulated in `scripts/Invoke-BackupRemediation.ps1`, replacing earlier inline loops in both GitHub Actions and Azure DevOps.
+### 8.1 Automated Remediation Scripts
+Deployment and remediation are now encapsulated in reusable scripts, replacing earlier inline loops in both GitHub Actions and Azure DevOps.
+
+- Deployment: `scripts/Deploy-BackupInfra.ps1`
+- Remediation (no long polling): `scripts/Start-BackupRemediation.ps1`
 
 Workflow:
 - Deploy (or update) the policy assignment per region (idempotent) using existing module.
@@ -81,22 +84,18 @@ Workflow:
 
 Invocation (CI):
 ```powershell
-./scripts/Invoke-BackupRemediation.ps1 -FailOnError
+./scripts/Deploy-BackupInfra.ps1
+./scripts/Start-BackupRemediation.ps1
 ```
-If `-FailOnError` is supplied the script exits non‑zero when any region remediation fails, causing the job to fail.
 
 Outputs:
-- `backup-remediation-summary.json` root-level object with `regions[]` (name, status, nonCompliantBefore, protectedAfter, remediationId) and `errors[]` if present.
+- Remediation progress can be monitored in Azure Portal under Policy > Remediations.
 
 Customization:
-- Poll intervals & counts are configurable at top of script (`MaxEvalPolls`, `EvalPollSeconds`, `MaxRemPolls`, `RemPollSeconds`).
-- Extend logic to capture deployment operation diagnostics if remediation fails consistently.
+- Extend logic as needed to add optional status polling in a separate helper if desired.
 
 Benefits over inline approach:
-- Centralized logic (easier future tuning).
-- Consistent JSON artifact for GitHub & Azure DevOps.
-- Readiness gate avoids premature remediation (NoPolicyEvaluationResult error).
-- Clear separation of assignment deployment vs remediation run.
+- Centralized logic (easier future tuning) and cleaner pipelines with minimal inline code.
 
 ### 9. Repository Layout Summary
 | Path | Purpose |

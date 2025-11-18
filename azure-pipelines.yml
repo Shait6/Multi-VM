@@ -113,58 +113,15 @@ stages:
               scriptType: 'ps'
               scriptLocation: 'inlineScript'
               inlineScript: |
-                $subId = '${{ parameters.subscriptionId }}'
-                if (-not [string]::IsNullOrWhiteSpace($subId)) { az account set --subscription $subId }
-                $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
-                $weeklyDays = "${{ parameters.weeklyBackupDaysOfWeekString }}".Split(',') | ForEach-Object { $_.Trim() }
-                $runTimes   = @("${{ parameters.backupScheduleTimeString }}")
-                $profileRaw = "${{ parameters.retentionProfile }}"
-                $parts = $profileRaw.Split('|')
-                if ($parts.Count -lt 5) { throw "Invalid retentionProfile format '$profileRaw'. Expected Daily|Weekly|Yearly|TagName|TagValue." }
-                $dailyRetention = [int]$parts[0]
-                $weeklyWeeks    = [int]$parts[1]
-                $yearlyYears    = [int]$parts[2]
-                $tagName        = $parts[3]
-                $tagValue       = $parts[4]
-                if ($dailyRetention -lt 7) { throw "dailyRetentionDays ($dailyRetention) must be >=7" }
-                if ($weeklyWeeks -lt 1) { throw "weeklyWeeks ($weeklyWeeks) must be >=1" }
-                $weeklyRetention = $weeklyWeeks * 7
-                $enableYearly = $yearlyYears -gt 0
-                $instantInput = [int]${{ parameters.instantRestoreRetentionDays }}
-                $instantClamped = [Math]::Min([Math]::Max($instantInput,1),5)
-                if ("${{ parameters.backupFrequency }}" -eq 'Weekly') { $instantEffective = 5 } else { $instantEffective = $instantClamped }
-                $roleGuid = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
-                $paramContent = @{
-                  backupFrequency        = @{ value = "${{ parameters.backupFrequency }}" }
-                  dailyRetentionDays     = @{ value = $dailyRetention }
-                  weeklyRetentionDays    = @{ value = $weeklyRetention }
-                  weeklyBackupDaysOfWeek = @{ value = $weeklyDays }
-                  backupScheduleRunTimes = @{ value = $runTimes }
-                  backupTimeZone         = @{ value = "${{ parameters.backupTimeZone }}" }
-                  instantRestoreRetentionDays = @{ value = $instantEffective }
-                  enableMonthlyRetention = @{ value = ('${{ parameters.enableMonthlyRetention }}' -eq 'true') }
-                  monthlyRetentionMonths = @{ value = ${{ parameters.monthlyRetentionMonths }} }
-                  monthlyWeeksOfMonth    = @{ value = ("${{ parameters.monthlyWeeksOfMonth }}".Split(',') | ForEach-Object { $_.Trim() }) }
-                  monthlyDaysOfWeek      = @{ value = ("${{ parameters.monthlyDaysOfWeek }}".Split(',') | ForEach-Object { $_.Trim() }) }
-                  enableYearlyRetention  = @{ value = $enableYearly }
-                  yearlyRetentionYears   = @{ value = $yearlyYears }
-                  yearlyMonthsOfYear     = @{ value = ("${{ parameters.yearlyMonthsOfYear }}".Split(',') | ForEach-Object { $_.Trim() }) }
-                  yearlyWeeksOfMonth     = @{ value = ("${{ parameters.yearlyWeeksOfMonth }}".Split(',') | ForEach-Object { $_.Trim() }) }
-                  yearlyDaysOfWeek       = @{ value = ("${{ parameters.yearlyDaysOfWeek }}".Split(',') | ForEach-Object { $_.Trim() }) }
-                  remediationRoleDefinitionId = @{ value = $roleGuid }
-                }
-                $paramContent | ConvertTo-Json -Depth 4 | Out-File bicep-params.json -Encoding utf8
-                Write-Host "Starting deployment $deployName backupFrequency=${{ parameters.backupFrequency }}"
-                $failed = $false
-                try { az deployment sub create --name $deployName --location "${{ parameters.deploymentLocation }}" --template-file main.bicep --parameters @bicep-params.json -o json > deployment-result.json } catch { $failed = $true }
-                if ($failed) {
-                  az deployment sub show --name $deployName -o json > deployment-show.json 2>$null
-                  az deployment operation sub list --name $deployName -o json > deployment-operations.json 2>$null
-                  Write-Host "Deployment failed; diagnostics captured."; exit 1
-                }
-                $outputs = az deployment sub show --name $deployName --query properties.outputs -o json | ConvertFrom-Json
-                $outputs | ConvertTo-Json -Depth 10 | Out-File deployment-outputs.json -Encoding utf8
-                Write-Host "Outputs saved -> deployment-outputs.json"
+                if (-not [string]::IsNullOrWhiteSpace('${{ parameters.subscriptionId }}')) { $env:SUBSCRIPTION_ID='${{ parameters.subscriptionId }}' }
+                $env:DEPLOYMENT_LOCATION = '${{ parameters.deploymentLocation }}'
+                $env:BACKUP_FREQUENCY    = '${{ parameters.backupFrequency }}'
+                $env:WEEKLY_DAYS         = '${{ parameters.weeklyBackupDaysOfWeekString }}'
+                $env:RETENTION_PROFILE   = '${{ parameters.retentionProfile }}'
+                $env:BACKUP_TIME         = '${{ parameters.backupScheduleTimeString }}'
+                $env:BACKUP_TZ           = '${{ parameters.backupTimeZone }}'
+                $env:INSTANT_RESTORE_DAYS= '${{ parameters.instantRestoreRetentionDays }}'
+                . ./scripts/Deploy-BackupInfra.ps1
   - stage: Remediate
     displayName: 'Auto-enable Backup Remediation'
     dependsOn: BuildAndDeploy
@@ -177,7 +134,7 @@ stages:
         steps:
           - checkout: self
           - task: AzureCLI@2
-            displayName: 'Invoke Remediation Script'
+            displayName: 'Trigger Remediation (no polling)'
             inputs:
               azureSubscription: '${{ parameters.serviceConnection }}'
               scriptType: 'ps'
@@ -185,13 +142,12 @@ stages:
               inlineScript: |
                 $subId = '${{ parameters.subscriptionId }}'
                 if (-not [string]::IsNullOrWhiteSpace($subId)) { az account set --subscription $subId }
-                Write-Host "Running remediation script regions='${{ parameters.remediationRegions }}'"
-                . ./scripts/Invoke-BackupRemediation.ps1 -FailOnError
-                Write-Host "Remediation summary:"; Get-Content backup-remediation-summary.json | Write-Host
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish Remediation Summary'
-            inputs:
-              PathtoPublish: 'backup-remediation-summary.json'
-              ArtifactName: 'remediation-summary'
-              publishLocation: 'Container'
+                $env:REMEDIATION_REGIONS = '${{ parameters.remediationRegions }}'
+                $env:DEPLOYMENT_LOCATION = '${{ parameters.deploymentLocation }}'
+                $env:BACKUP_FREQUENCY    = '${{ parameters.backupFrequency }}'
+                # Parse tags from composite retention profile
+                $parts = "${{ parameters.retentionProfile }}".Split('|')
+                if ($parts.Count -ge 5) { $env:VM_TAG_NAME = $parts[3]; $env:VM_TAG_VALUE = $parts[4] }
+                . ./scripts/Start-BackupRemediation.ps1
+          # No long polling or artifacts; remediation visible in Policy > Remediations
 

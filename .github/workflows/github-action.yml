@@ -89,63 +89,7 @@ jobs:
         id: deploy_backup
         shell: pwsh
         run: |
-          az account set --subscription "$env:SUBSCRIPTION_ID"
-          $days = $env:WEEKLY_DAYS.Split(',') | ForEach-Object { $_.Trim() }
-          # Instant restore retention: force 5 when Weekly is selected
-          $instant = [int]$env:INSTANT_RESTORE_DAYS
-          if ($env:BACKUP_FREQUENCY -eq 'Weekly') { $instant = 5 }
-          echo "Computed instant restore retention days (parameter): $instant"
-          if ($env:BACKUP_FREQUENCY -eq 'Weekly') { echo 'Weekly policy will use 5 days (enforced).'}
-          if ($env:BACKUP_FREQUENCY -eq 'Both')   { echo "Weekly policy will use 5 days; daily uses $instant day(s)." }
-          # Parse composite retention profile DailyDays|WeeklyWeeks|YearlyYears|TagName|TagValue
-          $profileParts = $env:RETENTION_PROFILE.Split('|')
-          if ($profileParts.Count -lt 5) { throw "Invalid retentionProfile format. Expected Daily|Weekly|Yearly|TagName|TagValue (e.g. 14|30|10|backup|true)." }
-          $dailyRetention   = [int]$profileParts[0]
-          $weeklyWeeks      = [int]$profileParts[1]
-          $yearlyYears      = [int]$profileParts[2]
-          $tagName         = $profileParts[3]
-          $tagValue        = $profileParts[4]
-          if ($dailyRetention -lt 7) { throw "dailyRetentionDays ($dailyRetention) must be >= 7" }
-          if ($weeklyWeeks -lt 1) { throw "weeklyRetentionWeeks ($weeklyWeeks) must be >= 1" }
-          $weeklyRetentionDays = $weeklyWeeks * 7
-          $enableYearly = $yearlyYears -gt 0
-          echo "Parsed profile -> DailyDays=$dailyRetention WeeklyWeeks=$weeklyWeeks YearlyYears=$yearlyYears TagName=$tagName TagValue=$tagValue (enableYearly=$enableYearly)"
-          # Map remediation role choice to GUID
-          $roleGuid = 'b24988ac-6180-42a0-ab88-20f7382dd24c' # Contributor
-          echo "Selected remediation role: Contributor ($roleGuid)"
-          # Prepare parameters
-            $paramObj = @{
-              backupFrequency        = @{ value = $env:BACKUP_FREQUENCY }
-              dailyRetentionDays     = @{ value = $dailyRetention }
-              weeklyRetentionDays    = @{ value = $weeklyRetentionDays }
-              weeklyBackupDaysOfWeek = @{ value = $days }
-              backupScheduleRunTimes = @{ value = @($env:BACKUP_TIME) }
-              backupTimeZone         = @{ value = $env:BACKUP_TZ }
-              instantRestoreRetentionDays = @{ value = $instant }
-              enableMonthlyRetention = @{ value = $false }
-              enableYearlyRetention  = @{ value = $enableYearly }
-          	  yearlyRetentionYears   = @{ value = $yearlyYears }
-              remediationRoleDefinitionId = @{ value = $roleGuid }
-            }
-            $paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8
-            $deployName = "gh-multi-region-$(Get-Date -Format yyyyMMddHHmmss)"
-            echo "Starting deployment $deployName with frequency=$env:BACKUP_FREQUENCY days=$env:WEEKLY_DAYS"
-            az deployment sub create --name $deployName --location "$env:DEPLOYMENT_LOCATION" --template-file main.bicep --parameters @main-params.json -o json > gh-deployment.json
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "Subscription deployment failed with exit code $LASTEXITCODE"
-              if (Test-Path gh-deployment.json) { Get-Content gh-deployment.json | Write-Host }
-              exit $LASTEXITCODE
-            }
-            $outputs = az deployment sub show --name $deployName --query properties.outputs -o json | ConvertFrom-Json
-            $outputs | ConvertTo-Json -Depth 10 | Out-File gh-deployment-outputs.json -Encoding utf8
-            echo "Vaults: $($outputs.vaultIds.value -join ', ')"
-            echo "Policies: $($outputs.backupPolicyNames.value -join ', ')"
-            echo "UAIs: $($outputs.userAssignedIdentityIds.value -join ', ')"
-            echo "Principals: $($outputs.userAssignedIdentityPrincipalIds.value -join ', ')"
-            # Set step outputs using GITHUB_OUTPUT
-            $outFile = $env:GITHUB_OUTPUT
-            "vmTagName=$tagName"  | Out-File -FilePath $outFile -Append
-            "vmTagValue=$tagValue" | Out-File -FilePath $outFile -Append
+          . ./scripts/Deploy-BackupInfra.ps1
 
   remediate:
     if: ${{ github.event.inputs.enableAutoRemediation == 'true' }}
@@ -168,9 +112,8 @@ jobs:
         with:
           creds: ${{ secrets.serivcon }}
 
-      - name: Invoke automated remediation (per-region)
+      - name: Trigger remediation (per-region, no polling)
         shell: pwsh
         run: |
-          . ./scripts/Invoke-BackupRemediation.ps1 -FailOnError
-          Write-Host "Remediation summary:"; Get-Content backup-remediation-summary.json | Write-Host
+          . ./scripts/Start-BackupRemediation.ps1
           

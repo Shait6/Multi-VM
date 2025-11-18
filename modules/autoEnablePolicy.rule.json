@@ -70,8 +70,8 @@
           "parameters": {
             "backupPolicyId": { "value": "__BACKUP_POLICY_ID__" },
             "fabricName": { "value": "Azure" },
-            "protectionContainers": { "value": "[concat('iaasvmcontainer;iaasvmcontainerv2;', resourceGroup().name, ';', field('name'))]" },
-            "protectedItems": { "value": "[concat('vm;iaasvmcontainerv2;', resourceGroup().name, ';', field('name'))]" },
+            "protectionContainers": { "value": "[concat('iaasvmcontainer;iaasvmcontainerv2;', split(field('id'), '/')[4], ';', field('name'))]" },
+            "protectedItems": { "value": "[concat('vm;iaasvmcontainerv2;', split(field('id'), '/')[4], ';', field('name'))]" },
             "sourceResourceId": { "value": "[field('id')]" }
           }
         }
