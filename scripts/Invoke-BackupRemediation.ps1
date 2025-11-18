@@ -92,7 +92,7 @@ foreach($r in $targetRegions) {
   try {
     az deployment sub create --name "policy-assign-$r-$(Get-Date -Format yyyyMMddHHmmss)" --location $r --template-file modules/backupAutoEnablePolicy.bicep --parameters policyAssignmentName=$assignName assignmentLocation=$r assignmentIdentityId="/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r" vmTagName=$TagName vmTagValue=$TagValue vaultName=$vaultName vaultResourceGroup=$vaultRg backupPolicyName=$policyName -o none
   } catch {
-    Write-Warning "Assignment deployment failed for $r: $($_.Exception.Message)"
+    Write-Warning "Assignment deployment failed for ${r}: $($_.Exception.Message)"
   }
 
   $assignmentId = Get-AssignmentId $assignName
