@@ -5,15 +5,74 @@
       { "field": "tags['__TAGNAME__']", "equals": "__TAGVALUE__" },
       { "field": "location", "equals": "__REGION__" }
     ]
-  },
-  "then": {
-    "effect": "deployIfNotExists",
-    "details": {
-      "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
-      "existenceCondition": {
-        "allOf": [
+         "roleDefinitionIds": ["__ROLEDEFID__"],
+         "deployment": {
+           "properties": {
+             "mode": "Incremental",
+             "template": {
+               "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+               "contentVersion": "1.0.0.0",
+               "parameters": {
+                 "backupPolicyId": { "type": "String" },
+                 "fabricName": { "type": "String" },
+                 "protectionContainers": { "type": "String" },
+                 "protectedItems": { "type": "String" },
+                 "sourceResourceId": { "type": "String" }
+               },
+               "resources": [
+                 {
+                   "apiVersion": "2017-05-10",
+                   "name": "[concat('DeployProtection-', uniqueString(parameters('protectedItems')))]",
+                   "type": "Microsoft.Resources/deployments",
+                   "resourceGroup": "[split(parameters('backupPolicyId'), '/')[4]]",
+                   "subscriptionId": "[split(parameters('backupPolicyId'), '/')[2]]",
+                   "properties": {
+                     "mode": "Incremental",
+                     "template": {
+                       "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                       "contentVersion": "1.0.0.0",
+                       "parameters": {
+                         "backupPolicyId": { "type": "String" },
+                         "fabricName": { "type": "String" },
+                         "protectionContainers": { "type": "String" },
+                         "protectedItems": { "type": "String" },
+                         "sourceResourceId": { "type": "String" }
+                       },
+                       "resources": [
+                         {
+                           "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
+                           "name": "[concat(split(parameters('backupPolicyId'), '/')[8], '/', parameters('fabricName'), '/', parameters('protectionContainers'), '/', parameters('protectedItems'))]",
+                           "apiVersion": "2016-06-01",
+                           "properties": {
+                             "protectedItemType": "Microsoft.Compute/virtualMachines",
+                             "policyId": "[parameters('backupPolicyId')]",
+                             "sourceResourceId": "[parameters('sourceResourceId')]"
+                           }
+                         }
+                       ]
+                     },
+                     "parameters": {
+                       "backupPolicyId": { "value": "[parameters('backupPolicyId')]" },
+                       "fabricName": { "value": "[parameters('fabricName')]" },
+                       "protectionContainers": { "value": "[parameters('protectionContainers')]" },
+                       "protectedItems": { "value": "[parameters('protectedItems')]" },
+                       "sourceResourceId": { "value": "[parameters('sourceResourceId')]" }
+                     }
+                   }
+                 }
+               ]
+             },
+             "parameters": {
+               "backupPolicyId": { "value": "__BACKUP_POLICY_ID__" },
+               "fabricName": { "value": "Azure" },
+               "protectionContainers": { "value": "[concat('iaasvmcontainer;iaasvmcontainerv2;', split(field('id'), '/')[4], ';', field('name'))]" },
+               "protectedItems": { "value": "[concat('vm;iaasvmcontainerv2;', split(field('id'), '/')[4], ';', field('name'))]" },
+               "sourceResourceId": { "value": "[field('id')]" }
+             }
+           }
+         }
           {
-            "field": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems/properties.sourceResourceId",
+            "field": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers",
             "equals": "[field('id')]"
           }
         ]
