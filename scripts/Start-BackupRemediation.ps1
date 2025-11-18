@@ -4,8 +4,7 @@ param(
   [string]$DeploymentLocation = $env:DEPLOYMENT_LOCATION,
   [string]$BackupFrequency = $env:BACKUP_FREQUENCY,
   [string]$TagName = $env:VM_TAG_NAME,
-  [string]$TagValue = $env:VM_TAG_VALUE,
-  [switch]$RunBackupNow
+  [string]$TagValue = $env:VM_TAG_VALUE
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,49 +36,6 @@ foreach ($r in $targetRegions) {
   $remName = "remediate-vm-backup-$r"
   Write-Host "Triggering remediation $remName"
   az policy remediation create -n $remName --policy-assignment $assignId --resource-discovery-mode ReEvaluateCompliance --location-filters $r -o none
-
-  if ($RunBackupNow) {
-    Write-Host "Waiting briefly for remediation jobs to register protected items in vault $vaultName..."
-    Start-Sleep -Seconds 60
-
-    Write-Host "Querying protected items in vault $vaultName (region $r) for VMs tagged $TagName=$TagValue..."
-    $protected = az backup protected-item list `
-      --vault-name $vaultName `
-      --resource-group $vaultRg `
-      --backup-management-type AzureIaasVM `
-      --query "[?contains(tolower(properties.sourceResourceId), 'providers/microsoft.compute/virtualmachines')].{id:id, sourceId:properties.sourceResourceId}" -o json | ConvertFrom-Json
-
-    if (-not $protected) {
-      Write-Host "No protected items found in $vaultName yet; skipping Backup Now for region $r."
-      continue
-    }
-
-    foreach ($item in $protected) {
-      $vmId = $item.sourceId
-      $vm = az vm show --ids $vmId --query "{name:name, tags:tags}" -o json | ConvertFrom-Json
-      if (-not $vm) { continue }
-
-      $vmTags = $vm.tags
-      if (-not $vmTags) { continue }
-
-      if ($vmTags[$TagName] -ne $TagValue) { continue }
-
-      Write-Host "Triggering Backup Now for VM $($vm.name) in region $r..."
-
-      $parsed = $item.id -split '/'
-      $containerName = $parsed[-3]
-      $itemName = $parsed[-1]
-
-      az backup protection backup-now `
-        --vault-name $vaultName `
-        --resource-group $vaultRg `
-        --container-name $containerName `
-        --item-name $itemName `
-        --backup-management-type AzureIaasVM `
-        --retain-until (Get-Date).AddDays(30).ToString('yyyy-MM-dd') `
-        -o none
-    }
-  }
 }
 
 Write-Host "Remediation triggers submitted. You can monitor jobs in Policy -> Remediations."
