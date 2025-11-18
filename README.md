@@ -67,6 +67,7 @@ The template still exposes `remediationRoleDefinitionId` with this default, but 
 - Definition & assignment in `modules/backupAutoEnablePolicy.bicep` using rule file `autoEnablePolicy.rule.json`.
 - Effect deploys protected item resource if VM with tag lacks backup.
 - Remediation started explicitly (GitHub second job, ADO remediation stage).
+ - Existence check now uses an `existenceCondition` matching the protected item's `properties.sourceResourceId` to the VM id, ensuring idempotent behavior (no redeploy if already protected by any policy).
 
 ### 8.1 Automated Remediation Scripts
 Deployment and remediation are now encapsulated in reusable scripts, replacing earlier inline loops in both GitHub Actions and Azure DevOps.

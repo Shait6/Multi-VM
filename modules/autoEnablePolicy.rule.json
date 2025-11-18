@@ -10,6 +10,14 @@
     "effect": "deployIfNotExists",
     "details": {
       "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
+      "existenceCondition": {
+        "allOf": [
+          {
+            "field": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems/properties.sourceResourceId",
+            "equals": "[field('id')]"
+          }
+        ]
+      },
       "roleDefinitionIds": ["__ROLEDEFID__"],
       "deployment": {
         "properties": {
