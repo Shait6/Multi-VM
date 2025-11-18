@@ -9,7 +9,7 @@
   "then": {
     "effect": "deployIfNotExists",
     "details": {
-      "type": "Microsoft.RecoveryServices/backupprotecteditems",
+      "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
       "roleDefinitionIds": ["__ROLEDEFID__"],
       "deployment": {
         "properties": {

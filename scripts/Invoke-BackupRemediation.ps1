@@ -56,7 +56,7 @@ function Wait-Remediation($remName) {
 
 function List-ProtectedItems($vaultName, $vaultRg) {
   try {
-    az backup protected-item list --vault-name $vaultName --resource-group $vaultRg --backup-management-type AzureIaasVM -o json | ConvertFrom-Json
+    az backup item list --vault-name $vaultName --resource-group $vaultRg --backup-management-type AzureIaasVM -o json | ConvertFrom-Json
   } catch { @() }
 }
 
