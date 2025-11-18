@@ -22,7 +22,6 @@
               "fabricName": { "type": "String" },
               "protectionContainers": { "type": "String" },
               "protectedItems": { "type": "String" },
-              "vmResourceGroup": { "type": "String" },
               "sourceResourceId": { "type": "String" },
               "location": { "type": "String" }
             },
@@ -31,7 +30,7 @@
                 "apiVersion": "2017-05-10",
                 "name": "[concat('DeployProtection-', uniqueString(parameters('protectedItems')))]",
                 "type": "Microsoft.Resources/deployments",
-                "resourceGroup": "[parameters('vmResourceGroup')]",
+                "resourceGroup": "[split(parameters('backupPolicyId'), '/')[4]]",
                 "subscriptionId": "[split(parameters('backupPolicyId'), '/')[2]]",
                 "properties": {
                   "mode": "Incremental",
@@ -63,7 +62,6 @@
                     "fabricName": { "value": "[parameters('fabricName')]" },
                     "protectionContainers": { "value": "[parameters('protectionContainers')]" },
                     "protectedItems": { "value": "[parameters('protectedItems')]" },
-                    "vmResourceGroup": { "value": "[parameters('vmResourceGroup')]" },
                     "sourceResourceId": { "value": "[parameters('sourceResourceId')]" },
                     "location": { "value": "[parameters('location')]" }
                   }
@@ -76,7 +74,6 @@
             "fabricName": { "value": "Azure" },
             "protectionContainers": { "value": "[concat('iaasvmcontainer;iaasvmcontainerv2;', split(field('id'), '/')[4], ';', field('name'))]" },
             "protectedItems": { "value": "[concat('vm;iaasvmcontainerv2;', split(field('id'), '/')[4], ';', field('name'))]" },
-            "vmResourceGroup": { "value": "[split(field('id'), '/')[4]]" },
             "sourceResourceId": { "value": "[field('id')]" },
             "location": { "value": "[field('location')]" }
           }
