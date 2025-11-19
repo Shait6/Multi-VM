@@ -67,6 +67,14 @@ resource policyDef 'Microsoft.Authorization/policyDefinitions@2021-06-01' = {
       version: '1.0'
       createdBy: 'VM_Backup_Solution'
     }
+    parameters: {
+      location: {
+        type: 'String'
+        metadata: {
+          description: 'Target Azure region for VM evaluation (matches VM location)'
+        }
+      }
+    }
     policyRule: policyRule
     }
   }
