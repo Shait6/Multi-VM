@@ -40,7 +40,7 @@ foreach ($r in $targetRegions) {
 
   Write-Host "Assigning custom ANY-OS policy $assignName (vault=$vaultName, policy=$policyName)"
   $customDefId = ''
-  try { $customDefId = az policy definition show -n $CustomPolicyDefinitionName --query id -o tsv } catch { Write-Warning "Failed to resolve custom policy definition $CustomPolicyDefinitionName: $($_.Exception.Message)" }
+  try { $customDefId = az policy definition show -n $CustomPolicyDefinitionName --query id -o tsv } catch { Write-Warning "Failed to resolve custom policy definition $($CustomPolicyDefinitionName): $($_.Exception.Message)" }
   if (-not $customDefId) { Write-Warning "Skipping region $r (custom policy definition not found)"; continue }
   try {
     az deployment sub create --name "assign-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" --location $r --template-file modules/assignCustomCentralBackupPolicy.bicep --parameters policyAssignmentName=$assignName assignmentLocation=$r assignmentIdentityId=$uaiId customPolicyDefinitionId=$customDefId vmTagName=$TagName vmTagValue=$TagValue vaultName=$vaultName backupPolicyName=$policyName -o none
