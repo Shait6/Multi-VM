@@ -29,7 +29,7 @@ try {
       try {
         $raw = Get-Content -Raw -Path $policyDefJsonPath | ConvertFrom-Json
       } catch {
-        Write-Warning "Failed to parse JSON file $policyDefJsonPath: $($_.Exception.Message)"
+        Write-Warning "Failed to parse JSON file $($policyDefJsonPath): $($_.Exception.Message)"
         $raw = $null
       }
       if ($raw -and $raw.properties) {
@@ -56,7 +56,7 @@ try {
         try {
           az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $policyDefJsonPath --mode Indexed -o none
         } catch {
-          Write-Warning "Failed to create policy definition from $policyDefJsonPath: $($_.Exception.Message)"
+          Write-Warning "Failed to create policy definition from $($policyDefJsonPath): $($_.Exception.Message)"
         }
       }
     }
