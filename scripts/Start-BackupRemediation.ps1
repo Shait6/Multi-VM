@@ -20,12 +20,47 @@ $policyDefJsonPath = Join-Path -Path (Get-Location) -ChildPath 'policy-definitio
 try {
   $existingDef = az policy definition show -n $CustomPolicyDefinitionName -o json 2>$null | ConvertFrom-Json
 } catch { $existingDef = $null }
-if (-not $existingDef) {
-  if (-not (Test-Path $policyDefJsonPath)) { Write-Warning "Custom policy definition JSON not found at $policyDefJsonPath" } else {
-    Write-Host "Creating custom policy definition '$CustomPolicyDefinitionName' from $policyDefJsonPath" -ForegroundColor Cyan
-    az policy definition create --name $CustomPolicyDefinitionName --mode Indexed --rules $policyDefJsonPath --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." -o none
+  if (-not $existingDef) {
+    if (-not (Test-Path $policyDefJsonPath)) {
+      Write-Warning "Custom policy definition JSON not found at $policyDefJsonPath"
+    } else {
+      Write-Host "Creating custom policy definition '$CustomPolicyDefinitionName' from $policyDefJsonPath" -ForegroundColor Cyan
+      # Read JSON and extract policyRule and parameters if file contains 'properties' wrapper
+      try {
+        $raw = Get-Content -Raw -Path $policyDefJsonPath | ConvertFrom-Json
+      } catch {
+        Write-Warning "Failed to parse JSON file $policyDefJsonPath: $($_.Exception.Message)"
+        $raw = $null
+      }
+      if ($raw -and $raw.properties) {
+        $rulesObj = $raw.properties.policyRule
+        $paramsObj = $raw.properties.parameters
+        $tmpRules = [System.IO.Path]::GetTempFileName() + '.json'
+        $tmpParams = [System.IO.Path]::GetTempFileName() + '.json'
+        $rulesObj | ConvertTo-Json -Depth 99 | Out-File -FilePath $tmpRules -Encoding utf8
+        if ($paramsObj) { $paramsObj | ConvertTo-Json -Depth 99 | Out-File -FilePath $tmpParams -Encoding utf8 }
+        try {
+          if (Test-Path $tmpParams) {
+            az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $tmpRules --params $tmpParams --mode Indexed -o none
+          } else {
+            az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $tmpRules --mode Indexed -o none
+          }
+        } catch {
+          Write-Warning "Failed to create policy definition: $($_.Exception.Message)"
+        } finally {
+          if (Test-Path $tmpRules) { Remove-Item $tmpRules -Force }
+          if (Test-Path $tmpParams) { Remove-Item $tmpParams -Force }
+        }
+      } else {
+        # If file is already a rules object, pass it directly
+        try {
+          az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $policyDefJsonPath --mode Indexed -o none
+        } catch {
+          Write-Warning "Failed to create policy definition from $policyDefJsonPath: $($_.Exception.Message)"
+        }
+      }
+    }
   }
-}
 
 $targetRegions = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { $Regions.Split(',') | ForEach-Object { $_.Trim() } }
 Write-Host "Regions: $($targetRegions -join ', ') | Tag=$TagName=$TagValue | Freq=$BackupFrequency"
