@@ -22,7 +22,7 @@ Per region resource group `rsv-rg-<region>` hosts:
 
 Global (subscription‑scope) components:
 - Subscription‑scope Bicep (`main.bicep`) orchestrates cross‑region deployment.
-- Optional assignment of the built‑in DeployIfNotExists policy to auto‑enable backup for tagged VMs.
+- Custom DeployIfNotExists policy (any OS) auto‑enables backup for tagged VMs; created automatically if missing.
 - Audit‑only policy pipeline (Azure DevOps) for visibility without enforcement.
 
 ### 4. GitHub Workflow Dispatch Inputs (`.github/workflows/github-test.yml` & `github-action.yml`)
@@ -63,39 +63,33 @@ Remediation role is fixed to Contributor:
 - Contributor: `b24988ac-6180-42a0-ab88-20f7382dd24c`
 The template still exposes `remediationRoleDefinitionId` with this default, but pipelines always pass Contributor based on observed permission requirements for remediation.
 
-### 8. DeployIfNotExists Auto‑Enable Policy (Built‑in)
-- We assign the built‑in policy: "Configure backup on virtual machines with a given tag to an existing recovery services vault in the same location" (ID: `/providers/Microsoft.Authorization/policyDefinitions/345fa903-145c-4fe1-8bcd-93ec2adccde8`).
-- Assignment per region is handled by `modules/assignBuiltinCentralBackupPolicy.bicep` passing: `vaultLocation`, `inclusionTagName`, `inclusionTagValue` (array), and `backupPolicyId`.
-- Remediation is triggered by the pipeline to enable protection for any matching, unprotected VMs.
+### 8. DeployIfNotExists Auto‑Enable Policy (Custom Any‑OS)
+- We assign a custom policy (no OS/image restrictions) allowing ANY tagged VM in the region to be protected. Definition JSON: `policy-definitions/customCentralVmBackup.json`.
+- Assignment per region is handled by `modules/assignCustomCentralBackupPolicy.bicep` passing: `vaultLocation`, `inclusionTagName`, `inclusionTagValue` (array), and `backupPolicyId`.
+- Built‑in policy reference removed because it excluded newer images (e.g. Ubuntu 24.04). Use the custom definition for broad coverage.
 
 ### 8.1 Automated Remediation Scripts
-Deployment and remediation are now encapsulated in reusable scripts, replacing earlier inline loops in both GitHub Actions and Azure DevOps.
+Deployment and remediation are encapsulated in reusable scripts used by both GitHub Actions and Azure DevOps.
 
 - Deployment: `scripts/Deploy-BackupInfra.ps1`
-- Remediation (no long polling): `scripts/Start-BackupRemediation.ps1`
+- Remediation trigger: `scripts/Start-BackupRemediation.ps1` (idempotent assignment + remediation create; no polling by default)
 
-Workflow:
-- Deploy (or update) the policy assignment per region (idempotent) using existing module.
-- Poll policy evaluation summaries (`az policy state summarize`) until a result is available (readiness gate) or max polls reached.
-- Start remediation with `--resource-discovery-mode ReEvaluateCompliance` and region location filter.
-- Poll remediation status until terminal state (Succeeded/Failed/Canceled) or max polls reached.
-- Enumerate protected items per target vault resource group to verify new protection objects.
-- Emit JSON summary file `backup-remediation-summary.json` containing per-region status, counts, and any failures.
+Current behavior:
+- Auto-creates custom any‑OS policy definition if missing.
+- Assigns per region using `modules/assignCustomCentralBackupPolicy.bicep`.
+- Triggers remediation with `ReEvaluateCompliance`.
+- Does not poll or emit a summary file (monitor in Portal Policy > Remediations).
+
+Optional enhancements (not yet implemented):
+- Add polling for compliance state & remediation jobs.
+- Emit JSON summary of protected items per vault.
+- Fallback to built‑in policy for legacy OS allow‑list if desired.
 
 Invocation (CI):
 ```powershell
 ./scripts/Deploy-BackupInfra.ps1
 ./scripts/Start-BackupRemediation.ps1
 ```
-
-Outputs:
-- Remediation progress can be monitored in Azure Portal under Policy > Remediations.
-
-Customization:
-- Extend logic as needed to add optional status polling in a separate helper if desired.
-
-Benefits over inline approach:
-- Centralized logic (easier future tuning) and cleaner pipelines with minimal inline code.
 
 ### 9. Repository Layout Summary
 | Path | Purpose |
@@ -105,7 +99,7 @@ Benefits over inline approach:
 | `modules/backupPolicy.bicep` | Daily/Weekly (Both) VM backup policies |
 | `modules/userAssignedIdentity.bicep` | Per‑region UAI resources |
 | `modules/roleAssignment.bicep` | Role assignment for UAI |
-| `modules/assignBuiltinCentralBackupPolicy.bicep` | Assigns built‑in DeployIfNotExists backup policy |
+| `modules/assignCustomCentralBackupPolicy.bicep` | Assigns custom DeployIfNotExists backup policy (any OS) |
 | `modules/backupAuditPolicy.bicep` | Audit-only policy variant |
 | `.github/workflows/github-test.yml` | GitHub dispatch workflow (composite retention + tags) |
 | `azure-pipelines.yml` | ADO deploy & remediation pipeline |
@@ -158,10 +152,10 @@ az deployment sub create --name test-backup --location westeurope --template-fil
 - Policy NO_PARAM errors (weekly): Temporarily disable yearly/monthly (Yearly=0) and ensure ISO schedule times are valid; re‑enable incrementally.
 - Weekly retention invalid (<1 week): Supply WeeklyWeeks ≥ 1 (converted to days); daily must be ≥7 days.
 - Missing protection after remediation: Verify the VM has exact tag pair from `retentionProfile` and that region included in `remediationRegions` (or matches `deploymentLocation`).
-- Remediation script exits early: Check `backup-remediation-summary.json` for per-region error; verify UAI Contributor at subscription + VM RG.
+- Remediation script exits early: Verify subscription context or tag mismatch; ensure UAI Contributor at subscription + VM RG.
 - Protected item already exists: Policy will skip deployment; remediation logs show ExistingNonCompliant only for truly unprotected VMs.
 - Missing tag parsing (ADO/GitHub): Ensure composite has 5 segments; examples: `14|5|0|backup|true`.
-- Identity permissions: UAI needs Contributor on vault RG and VM RG(s). Add role assignment if VMs reside outside vault RG.
+- Identity permissions: UAI has Contributor at subscription (via template) covering vault + VM RGs. Reduce scope later for least privilege.
 - Secret name typo (GitHub): Confirm `secrets.serivcon` exists or rename to correct secret key.
 - Subscription context (ADO): Set `subscriptionId` variable or validate service connection scope.
 
