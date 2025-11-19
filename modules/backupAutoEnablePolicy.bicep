@@ -70,8 +70,9 @@ resource policyDef 'Microsoft.Authorization/policyDefinitions@2021-06-01' = {
     parameters: {
       location: {
         type: 'String'
+        defaultValue: 'n/a'
         metadata: {
-          description: 'Target Azure region for VM evaluation (matches VM location)'
+          description: 'Target Azure region for VM evaluation (matches VM location). Default is a no-op placeholder to allow definition updates.'
         }
       }
     }
