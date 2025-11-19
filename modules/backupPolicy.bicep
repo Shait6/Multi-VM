@@ -16,7 +16,11 @@ param dailyRetentionDays int = 14
 @description('Retention in days for weekly backups (>=7; converted to weeks)')
 @minValue(7)
 param weeklyRetentionDays int = 30
-@description('Time zone for schedule')
+@description('Time zone for schedule (Windows Time Zone ID)')
+@allowed([
+  'UTC'
+  'Central Europe Standard Time'    // Central Europe (UTC+1)
+])
 param backupTimeZone string = 'UTC'
 
 // Retained unused parameters (monthly/yearly + instant restore) to avoid breaking callers
@@ -90,7 +94,7 @@ var retentionPolicyWeekly = union({
 // DAILY POLICY
 resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@2023-04-01' = if (backupFrequency == 'Daily' || backupFrequency == 'Both') {
   parent: existingVault
-  name: backupFrequency == 'Both' ? '${backupPolicyName}-daily' : backupPolicyName
+  name: '${backupPolicyName}-daily'
   properties: {
     backupManagementType: 'AzureIaasVM'
     policyType: 'V1'
@@ -118,7 +122,7 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
 // WEEKLY POLICY 
 resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@2023-04-01' = if (backupFrequency == 'Weekly' || backupFrequency == 'Both') {
   parent: existingVault
-  name: backupFrequency == 'Both' ? '${backupPolicyName}-weekly' : backupPolicyName
+  name: '${backupPolicyName}-weekly'
   properties: {
     backupManagementType: 'AzureIaasVM'
     policyType: 'V1'

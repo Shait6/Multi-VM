@@ -67,10 +67,18 @@ resource policyDef 'Microsoft.Authorization/policyDefinitions@2021-06-01' = {
       version: '1.0'
       createdBy: 'VM_Backup_Solution'
     }
+    parameters: {
+      location: {
+        type: 'String'
+        defaultValue: 'n/a'
+        metadata: {
+          description: 'Target Azure region for VM evaluation (matches VM location). Default is a no-op placeholder to allow definition updates.'
+        }
+      }
+    }
     policyRule: policyRule
+    }
   }
-}
-
 resource policyAssign 'Microsoft.Authorization/policyAssignments@2021-06-01' = {
   name: policyAssignmentName
   location: assignmentLocation
@@ -78,7 +86,9 @@ resource policyAssign 'Microsoft.Authorization/policyAssignments@2021-06-01' = {
     displayName: 'Enable VM backup for tagged VMs - ${assignmentLocation}'
     description: 'Assign DeployIfNotExists policy to enable VM backup for VMs with the tag.'
     policyDefinitionId: policyDef.id
-    parameters: {}
+    parameters: {
+      location: { value: assignmentLocation }
+    }
   }
   identity: {
     type: 'UserAssigned'

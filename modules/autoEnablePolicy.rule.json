@@ -3,13 +3,13 @@
     "allOf": [
       { "field": "type", "equals": "Microsoft.Compute/virtualMachines" },
       { "field": "tags['__TAGNAME__']", "equals": "__TAGVALUE__" },
-      { "field": "location", "equals": "__REGION__" }
+      { "field": "location", "equals": "[parameters('location')]" }
     ]
   },
   "then": {
     "effect": "deployIfNotExists",
     "details": {
-      "type": "Microsoft.RecoveryServices/backupprotecteditems",
+      "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
       "roleDefinitionIds": ["__ROLEDEFID__"],
       "deployment": {
         "properties": {
@@ -22,15 +22,16 @@
               "fabricName": { "type": "String" },
               "protectionContainers": { "type": "String" },
               "protectedItems": { "type": "String" },
-              "sourceResourceId": { "type": "String" }
+              "sourceResourceId": { "type": "String" },
+              "location": { "type": "String" }
             },
             "resources": [
               {
                 "apiVersion": "2017-05-10",
                 "name": "[concat('DeployProtection-', uniqueString(parameters('protectedItems')))]",
                 "type": "Microsoft.Resources/deployments",
-                "resourceGroup": "[first(skip(split(parameters('backupPolicyId'), '/'), 4))]",
-                "subscriptionId": "[first(skip(split(parameters('backupPolicyId'), '/'), 2))]",
+                "resourceGroup": "[split(parameters('backupPolicyId'), '/')[4]]",
+                "subscriptionId": "[split(parameters('backupPolicyId'), '/')[2]]",
                 "properties": {
                   "mode": "Incremental",
                   "template": {
@@ -46,7 +47,7 @@
                     "resources": [
                       {
                         "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
-                        "name": "[concat(first(skip(split(parameters('backupPolicyId'), '/'), 8)), '/', parameters('fabricName'), '/', parameters('protectionContainers'), '/', parameters('protectedItems'))]",
+                        "name": "[concat(split(parameters('backupPolicyId'), '/')[8], '/', parameters('fabricName'), '/', parameters('protectionContainers'), '/', parameters('protectedItems'))]",
                         "apiVersion": "2016-06-01",
                         "properties": {
                           "protectedItemType": "Microsoft.Compute/virtualMachines",
@@ -61,7 +62,8 @@
                     "fabricName": { "value": "[parameters('fabricName')]" },
                     "protectionContainers": { "value": "[parameters('protectionContainers')]" },
                     "protectedItems": { "value": "[parameters('protectedItems')]" },
-                    "sourceResourceId": { "value": "[parameters('sourceResourceId')]" }
+                    "sourceResourceId": { "value": "[parameters('sourceResourceId')]" },
+                    "location": { "value": "[parameters('location')]" }
                   }
                 }
               }
@@ -70,9 +72,10 @@
           "parameters": {
             "backupPolicyId": { "value": "__BACKUP_POLICY_ID__" },
             "fabricName": { "value": "Azure" },
-            "protectionContainers": { "value": "[concat('iaasvmcontainer;iaasvmcontainerv2;', resourceGroup().name, ';', field('name'))]" },
-            "protectedItems": { "value": "[concat('vm;iaasvmcontainerv2;', resourceGroup().name, ';', field('name'))]" },
-            "sourceResourceId": { "value": "[field('id')]" }
+            "protectionContainers": { "value": "[concat('iaasvmcontainer;iaasvmcontainerv2;', split(field('id'), '/')[4], ';', field('name'))]" },
+            "protectedItems": { "value": "[concat('vm;iaasvmcontainerv2;', split(field('id'), '/')[4], ';', field('name'))]" },
+            "sourceResourceId": { "value": "[field('id')]" },
+            "location": { "value": "[field('location')]" }
           }
         }
       }
