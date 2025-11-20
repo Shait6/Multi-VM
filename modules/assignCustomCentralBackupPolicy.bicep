@@ -20,7 +20,11 @@ param vaultName string
 @description('Backup policy name in the vault')
 param backupPolicyName string
 
-var backupPolicyIdResolved = subscriptionResourceId('Microsoft.RecoveryServices/vaults/backupPolicies', vaultName, backupPolicyName)
+// Vault resource group follows deployment convention 'rsv-rg-<region>' where assignmentLocation == region
+var vaultRgName = 'rsv-rg-${assignmentLocation}'
+
+// Construct the full resourceId of the backup policy (includes subscription and resource group)
+var backupPolicyIdResolved = resourceId(vaultRgName, 'Microsoft.RecoveryServices/vaults/backupPolicies', vaultName, backupPolicyName)
 
 resource policyAssign 'Microsoft.Authorization/policyAssignments@2021-06-01' = {
   name: policyAssignmentName
