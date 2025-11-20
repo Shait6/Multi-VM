@@ -25,7 +25,9 @@ var vaultRgName = 'rsv-rg-${assignmentLocation}'
 
 // Construct the full resourceId of the backup policy (includes subscription and resource group)
 // This module targets subscription scope, so use subscriptionResourceId to include the resource group correctly
-var backupPolicyIdResolved = subscriptionResourceId(subscription().subscriptionId, vaultRgName, 'Microsoft.RecoveryServices/vaults/backupPolicies', vaultName, backupPolicyName)
+// Build the fully qualified resourceId for the backup policy in the regional vault.
+// Use resourceId(subscriptionId, resourceGroupName, resourceType, name...) so the resource group is included.
+var backupPolicyIdResolved = resourceId(subscription().subscriptionId, vaultRgName, 'Microsoft.RecoveryServices/vaults/backupPolicies', vaultName, backupPolicyName)
 
 resource policyAssign 'Microsoft.Authorization/policyAssignments@2021-06-01' = {
   name: policyAssignmentName
