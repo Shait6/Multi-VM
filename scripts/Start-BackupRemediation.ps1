@@ -153,6 +153,26 @@ foreach ($r in $targetRegions) {
     Write-Warning "Assignment deployment failed for ${r}: $($_.Exception.Message)"
   }
 
+  # Fetch the assignment id (if created) and log the resolved backupPolicyId from the deployment outputs for debugging
+  try {
+    $assignId = az policy assignment show -n $assignName --query id -o tsv
+  } catch {}
+  if ($assignId) {
+    Write-Host "Assignment created: $assignId"
+  } else {
+    Write-Warning "Assignment not found after deployment for $r. Attempting to inspect deployment outputs..."
+    try {
+      # Show last subscription deployment outputs that match our assign name prefix
+      $deployments = az deployment sub list --query "[?starts_with(name, 'assign-policy-$r')]|[0]" -o json | ConvertFrom-Json
+      if ($deployments -and $deployments.properties -and $deployments.properties.outputs) {
+        $outs = $deployments.properties.outputs
+        Write-Host "Deployment outputs for assign-policy-$r: $(ConvertTo-Json $outs -Depth 5)"
+      }
+    } catch {
+      Write-Warning "Unable to retrieve deployment outputs: $($_.Exception.Message)"
+    }
+  }
+
   $assignId = ''
   try { $assignId = az policy assignment show -n $assignName --query id -o tsv } catch {}
   if (-not $assignId) { Write-Warning "Assignment not found in $r; skipping remediation"; continue }
