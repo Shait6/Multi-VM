@@ -26,17 +26,45 @@ try {
     if (Test-Path $policyFullJsonPath) {
       Write-Host "Creating custom policy definition '$CustomPolicyDefinitionName' from full JSON $policyFullJsonPath via REST PUT (preserves policy expressions)" -ForegroundColor Cyan
       try {
-        $rawJson = Get-Content -Raw -Path $policyFullJsonPath
+        # Use @file syntax to send the JSON file verbatim and avoid PowerShell/CLI escaping issues
         $uri = "/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/policyDefinitions/$CustomPolicyDefinitionName?api-version=2021-06-01"
-        az rest --method put --uri $uri --body "$rawJson" -o none
-        # verify stored policyRule
-        Write-Host "Fetching stored policyRule to verify policy expressions are preserved..." -ForegroundColor Cyan
+        try {
+          az rest --method put --uri $uri --body "@$policyFullJsonPath" -o none
+        } catch {
+          Write-Warning "az rest PUT failed: $($_.Exception.Message)"
+        }
+
+        # verify stored policyRule and inspect nested deployment template for 'field(' occurrences
+        Write-Host "Fetching stored policyDefinition to verify policy expressions are preserved..." -ForegroundColor Cyan
         $stored = az policy definition show -n $CustomPolicyDefinitionName -o json | ConvertFrom-Json
         if ($stored -and $stored.properties -and $stored.properties.policyRule) {
           $pv = (ConvertTo-Json $stored.properties.policyRule -Depth 99)
           $tmpOut = [System.IO.Path]::GetTempFileName() + '.json'
           $pv | Out-File -FilePath $tmpOut -Encoding utf8
           Write-Host "Stored policyRule written to: $tmpOut"
+
+          # Try to extract nested deployment.template inside then.details.deployment.properties.template
+          $nested = $null
+          try {
+            $nested = $stored.properties.policyRule.then.details.deployment.properties.template
+          } catch {
+            $nested = $null
+          }
+          if ($nested) {
+            $nestedJson = (ConvertTo-Json $nested -Depth 99)
+            $nestedOut = [System.IO.Path]::GetTempFileName() + '.json'
+            $nestedJson | Out-File -FilePath $nestedOut -Encoding utf8
+            Write-Host "Nested deployment template written to: $nestedOut"
+            if ($nestedJson -match "field\('\w+\'\)") {
+              Write-Host "Detected policy 'field()' expressions inside nested template (expected)." -ForegroundColor Green
+            } elseif ($nestedJson -match "field\(") {
+              Write-Host "Detected 'field(' in nested template (pattern match)." -ForegroundColor Yellow
+            } else {
+              Write-Warning "No 'field(' expressions detected in nested template — this may indicate the policy engine won't be able to evaluate resource-specific values."
+            }
+          } else {
+            Write-Warning "Unable to find nested deployment.template inside stored policyRule for inspection."
+          }
         } else {
           Write-Warning "Policy definition created but unable to read back properties.policyRule."
         }

@@ -95,9 +95,35 @@ jobs:
         run: |
           . ./scripts/Deploy-BackupInfra.ps1
 
+  deploy_policy:
+    needs: deploy
+    if: ${{ github.event.inputs.enableAutoRemediation == 'true' }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.serivcon }}
+
+      - name: Deploy policy definition (verbatim)
+        shell: pwsh
+        run: |
+          $policyName = 'Custom-CentralVmBackup-AnyOS'
+          $policyFile = 'policy-definitions/customCentralVmBackup.full.json'
+          if (-not (Test-Path $policyFile)) { Write-Host "Policy file not found: $policyFile"; exit 0 }
+          Write-Host "Creating policy definition $policyName from $policyFile (PUT via az rest)"
+          $curSub = az account show --query id -o tsv
+          $uri = "/subscriptions/$curSub/providers/Microsoft.Authorization/policyDefinitions/$policyName?api-version=2021-06-01"
+          az rest --method put --uri $uri --body "@$policyFile" -o json
+          Write-Host "Policy definition deployed (showing stored policyRule snippet)"
+          az policy definition show -n $policyName --query properties.policyRule -o json
+
   remediate:
     if: ${{ github.event.inputs.enableAutoRemediation == 'true' }}
-    needs: deploy
+    needs: [deploy, deploy_policy]
     runs-on: windows-latest
     env:
       SUBSCRIPTION_ID: ${{ github.event.inputs.subscriptionId }}
