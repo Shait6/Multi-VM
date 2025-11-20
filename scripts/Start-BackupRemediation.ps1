@@ -133,7 +133,7 @@ try {
   }
 
 $targetRegions = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { $Regions.Split(',') | ForEach-Object { $_.Trim() } }
-Write-Host "Regions: $($targetRegions -join ', ') | Tag=$TagName=$TagValue | Freq=$BackupFrequency"
+Write-Host "Regions: $($targetRegions -join ', ') | Tag=${TagName}=${TagValue} | Freq=${BackupFrequency}"
 
 foreach ($r in $targetRegions) {
   $vaultName = "rsv-$r"
@@ -164,9 +164,11 @@ foreach ($r in $targetRegions) {
     try {
       # Show last subscription deployment outputs that match our assign name prefix
       $deployments = az deployment sub list --query "[?starts_with(name, 'assign-policy-$r')]|[0]" -o json | ConvertFrom-Json
-      if ($deployments -and $deployments.properties -and $deployments.properties.outputs) {
+        if ($deployments -and $deployments.properties -and $deployments.properties.outputs) {
         $outs = $deployments.properties.outputs
-        Write-Host "Deployment outputs for assign-policy-$r: $(ConvertTo-Json $outs -Depth 5)"
+        $outsJson = ConvertTo-Json $outs -Depth 5
+        Write-Host "Deployment outputs for assign-policy-${r}:"
+        Write-Host $outsJson
       }
     } catch {
       Write-Warning "Unable to retrieve deployment outputs: $($_.Exception.Message)"
