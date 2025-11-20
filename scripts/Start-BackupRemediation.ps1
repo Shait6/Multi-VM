@@ -29,7 +29,8 @@ try {
         # Use @file syntax to send the JSON file verbatim and avoid PowerShell/CLI escaping issues
         $uri = "https://management.azure.com/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/policyDefinitions/$CustomPolicyDefinitionName?api-version=2021-06-01"
         try {
-          $resp = az rest --method put --uri $uri --body "@$policyFullJsonPath" -o none 2>&1
+          $rawJson = Get-Content -Raw -Path $policyFullJsonPath
+          $resp = az rest --method put --uri $uri --body "$rawJson" -o none 2>&1
           if ($LASTEXITCODE -ne 0) { throw "az rest failed: $resp" }
         } catch {
           Write-Warning "az rest PUT failed: $($_.Exception.Message)"

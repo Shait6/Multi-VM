@@ -150,7 +150,8 @@ stages:
                 Write-Host "Creating policy definition $policyName from $policyFile (PUT via az rest)"
                 $curSub = az account show --query id -o tsv
                   $uri = "https://management.azure.com/subscriptions/$curSub/providers/Microsoft.Authorization/policyDefinitions/$policyName?api-version=2021-06-01"
-                  $resp = az rest --method put --uri $uri --body "@$policyFile" -o json 2>&1
+                  $rawJson = Get-Content -Raw -Path $policyFile
+                  $resp = az rest --method put --uri $uri --body "$rawJson" -o json 2>&1
                   if ($LASTEXITCODE -ne 0) {
                     Write-Error "az rest failed: $resp"
                     exit $LASTEXITCODE
