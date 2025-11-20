@@ -27,9 +27,10 @@ try {
       Write-Host "Creating custom policy definition '$CustomPolicyDefinitionName' from full JSON $policyFullJsonPath via REST PUT (preserves policy expressions)" -ForegroundColor Cyan
       try {
         # Use @file syntax to send the JSON file verbatim and avoid PowerShell/CLI escaping issues
-        $uri = "/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/policyDefinitions/$CustomPolicyDefinitionName?api-version=2021-06-01"
+        $uri = "https://management.azure.com/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/policyDefinitions/$CustomPolicyDefinitionName?api-version=2021-06-01"
         try {
-          az rest --method put --uri $uri --body "@$policyFullJsonPath" -o none
+          $resp = az rest --method put --uri $uri --body "@$policyFullJsonPath" -o none 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "az rest failed: $resp" }
         } catch {
           Write-Warning "az rest PUT failed: $($_.Exception.Message)"
         }

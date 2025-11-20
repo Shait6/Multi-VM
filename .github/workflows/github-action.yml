@@ -115,11 +115,15 @@ jobs:
           $policyFile = 'policy-definitions/customCentralVmBackup.full.json'
           if (-not (Test-Path $policyFile)) { Write-Host "Policy file not found: $policyFile"; exit 0 }
           Write-Host "Creating policy definition $policyName from $policyFile (PUT via az rest)"
-          $curSub = az account show --query id -o tsv
-          $uri = "/subscriptions/$curSub/providers/Microsoft.Authorization/policyDefinitions/$policyName?api-version=2021-06-01"
-          az rest --method put --uri $uri --body "@$policyFile" -o json
-          Write-Host "Policy definition deployed (showing stored policyRule snippet)"
-          az policy definition show -n $policyName --query properties.policyRule -o json
+            $curSub = az account show --query id -o tsv
+            $uri = "https://management.azure.com/subscriptions/$curSub/providers/Microsoft.Authorization/policyDefinitions/$policyName?api-version=2021-06-01"
+            $resp = az rest --method put --uri $uri --body "@$policyFile" -o json 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "az rest failed: $resp"
+              exit $LASTEXITCODE
+            }
+            Write-Host "Policy definition deployed (showing stored policyRule snippet)"
+            az policy definition show -n $policyName --query properties.policyRule -o json
 
   remediate:
     if: ${{ github.event.inputs.enableAutoRemediation == 'true' }}
