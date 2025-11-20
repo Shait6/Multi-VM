@@ -17,14 +17,36 @@ if (-not $SubscriptionId) {
 
 # Ensure custom policy definition exists (idempotent). If missing, create from JSON file.
 $policyDefJsonPath = Join-Path -Path (Get-Location) -ChildPath 'policy-definitions/customCentralVmBackup.json'
+$policyFullJsonPath = Join-Path -Path (Get-Location) -ChildPath 'policy-definitions/customCentralVmBackup.full.json'
 try {
   $existingDef = az policy definition show -n $CustomPolicyDefinitionName -o json 2>$null | ConvertFrom-Json
 } catch { $existingDef = $null }
   if (-not $existingDef) {
-    if (-not (Test-Path $policyDefJsonPath)) {
-      Write-Warning "Custom policy definition JSON not found at $policyDefJsonPath"
+    # Prefer exact full-definition file if present. Use az rest PUT to send the JSON verbatim
+    if (Test-Path $policyFullJsonPath) {
+      Write-Host "Creating custom policy definition '$CustomPolicyDefinitionName' from full JSON $policyFullJsonPath via REST PUT (preserves policy expressions)" -ForegroundColor Cyan
+      try {
+        $rawJson = Get-Content -Raw -Path $policyFullJsonPath
+        $uri = "/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/policyDefinitions/$CustomPolicyDefinitionName?api-version=2021-06-01"
+        az rest --method put --uri $uri --body "$rawJson" -o none
+        # verify stored policyRule
+        Write-Host "Fetching stored policyRule to verify policy expressions are preserved..." -ForegroundColor Cyan
+        $stored = az policy definition show -n $CustomPolicyDefinitionName -o json | ConvertFrom-Json
+        if ($stored -and $stored.properties -and $stored.properties.policyRule) {
+          $pv = (ConvertTo-Json $stored.properties.policyRule -Depth 99)
+          $tmpOut = [System.IO.Path]::GetTempFileName() + '.json'
+          $pv | Out-File -FilePath $tmpOut -Encoding utf8
+          Write-Host "Stored policyRule written to: $tmpOut"
+        } else {
+          Write-Warning "Policy definition created but unable to read back properties.policyRule."
+        }
+      } catch {
+        Write-Warning "Failed to create policy definition via REST PUT: $($_.Exception.Message)"
+      }
+    } elseif (-not (Test-Path $policyDefJsonPath)) {
+      Write-Warning "Custom policy definition JSON not found at $policyDefJsonPath and full JSON not present at $policyFullJsonPath"
     } else {
-      Write-Host "Creating custom policy definition '$CustomPolicyDefinitionName' from $policyDefJsonPath" -ForegroundColor Cyan
+      Write-Host "Creating custom policy definition '$CustomPolicyDefinitionName' from $policyDefJsonPath (legacy/fallback path)" -ForegroundColor Cyan
       # Read JSON and extract policyRule and parameters if file contains 'properties' wrapper
       try {
         $raw = Get-Content -Raw -Path $policyDefJsonPath | ConvertFrom-Json
