@@ -120,10 +120,10 @@
                       },
                       "parameters": {
                         "backupPolicyId": { "value": "[parameters('backupPolicyId')]" },
-                        "fabricName": { "value": "Azure" },
-                        "protectionContainers": { "value": "[concat('iaasvmcontainer;iaasvmcontainerv2;', resourceGroup().name, ';', field('name'))]" },
-                        "protectedItems": { "value": "[concat('vm;iaasvmcontainerv2;', resourceGroup().name, ';', field('name'))]" },
-                        "sourceResourceId": { "value": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Compute/virtualMachines/', field('name'))]" }
+                        "fabricName": { "value": "[parameters('fabricName')]" },
+                        "protectionContainers": { "value": "[parameters('protectionContainers')]" },
+                        "protectedItems": { "value": "[parameters('protectedItems')]" },
+                        "sourceResourceId": { "value": "[parameters('sourceResourceId')]" }
                       }
                     }
                   }
