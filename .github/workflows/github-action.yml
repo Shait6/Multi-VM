@@ -56,7 +56,7 @@ on:
         options: ['1','2','3','4','5']
 
 jobs:
-  deploy:
+  deploy_infrastructure:
     runs-on: windows-latest
     outputs:
       vmTagName: ${{ steps.deploy_backup.outputs.vmTagName }}
@@ -95,16 +95,64 @@ jobs:
         run: |
           . ./scripts/Deploy-BackupInfra.ps1
 
+  deploy_policy:
+    needs: deploy_infrastructure
+    if: ${{ github.event.inputs.enableAutoRemediation == 'true' }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.serivcon }}
+
+      - name: Deploy policy definition (rules file)
+        shell: pwsh
+        run: |
+          $policyName = 'Custom-CentralVmBackup-AnyOS'
+          $rulesFile = 'policy-definitions/customCentralVmBackup.rules.json'
+          $fullFile = 'policy-definitions/customCentralVmBackup.full.json'
+          if (-not (Test-Path $rulesFile)) { Write-Host "Rules file not found: $rulesFile"; exit 0 }
+          Write-Host "Creating policy definition $policyName from rules file $rulesFile"
+          # If params are present in full JSON, extract them to a temp file
+          $paramsArg = $null
+          if (Test-Path $fullFile) {
+            try {
+              $raw = Get-Content -Raw -Path $fullFile | ConvertFrom-Json
+              if ($raw.properties -and $raw.properties.parameters) {
+                $tmpParams = [System.IO.Path]::GetTempFileName() + '.json'
+                $raw.properties.parameters | ConvertTo-Json -Depth 99 | Out-File -FilePath $tmpParams -Encoding utf8
+                $paramsArg = $tmpParams
+              }
+            } catch {
+              Write-Warning "Failed to parse full JSON params: $($_.Exception.Message)"
+            }
+          }
+          try {
+            if ($paramsArg) {
+              az policy definition create --name $policyName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --params $paramsArg --mode Indexed -o json
+            } else {
+              az policy definition create --name $policyName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --mode Indexed -o json
+            }
+          } finally {
+            if ($paramsArg -and (Test-Path $paramsArg)) { Remove-Item $paramsArg -Force }
+          }
+          Write-Host "Policy definition created. Showing stored policyRule snippet"
+          az policy definition show -n $policyName --query properties.policyRule -o json
+
   remediate:
     if: ${{ github.event.inputs.enableAutoRemediation == 'true' }}
-    needs: deploy
+    needs: [deploy_infrastructure , deploy_policy]
     runs-on: windows-latest
     env:
       SUBSCRIPTION_ID: ${{ github.event.inputs.subscriptionId }}
       DEPLOYMENT_LOCATION: ${{ github.event.inputs.deploymentLocation }}
       BACKUP_FREQUENCY: ${{ github.event.inputs.backupFrequency }}
-      VM_TAG_NAME: ${{ needs.deploy.outputs.vmTagName }}
-      VM_TAG_VALUE: ${{ needs.deploy.outputs.vmTagValue }}
+      # Correct output reference (job name is deploy_infrastructure)
+      VM_TAG_NAME: ${{ needs.deploy_infrastructure.outputs.vmTagName }}
+      VM_TAG_VALUE: ${{ needs.deploy_infrastructure.outputs.vmTagValue }}
       REMEDIATION_REGIONS: ${{ github.event.inputs.remediationRegions }}
       WAIT_MINUTES: '5'
     steps:
@@ -116,8 +164,9 @@ jobs:
         with:
           creds: ${{ secrets.serivcon }}
 
-      - name: Trigger remediation (per-region, no polling)
+      - name: Trigger remediation (per-region)
         shell: pwsh
         run: |
+          if (-not $env:VM_TAG_NAME -or -not $env:VM_TAG_VALUE) { Write-Error "Tag name/value not supplied from deployment outputs. Check retentionProfile format and workflow output wiring."; exit 1 }
           . ./scripts/Start-BackupRemediation.ps1
           

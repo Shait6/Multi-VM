@@ -125,9 +125,61 @@ stages:
                 $env:BACKUP_TZ           = '${{ parameters.backupTimeZone }}'
                 $env:INSTANT_RESTORE_DAYS= '${{ parameters.instantRestoreRetentionDays }}'
                 . ./scripts/Deploy-BackupInfra.ps1
+  - stage: DeployPolicyDefinition
+    displayName: 'Deploy Policy Definition'
+    dependsOn: BuildAndDeploy
+    jobs:
+      - job: DeployPolicy
+        displayName: 'Create/Update Custom Policy Definition'
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: 'Deploy policy definition (verbatim)'
+            inputs:
+              azureSubscription: '${{ parameters.serviceConnection }}'
+              scriptType: 'ps'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                $subId = '${{ parameters.subscriptionId }}'
+                if (-not [string]::IsNullOrWhiteSpace($subId)) { az account set --subscription $subId }
+                $policyName = 'Custom-CentralVmBackup-AnyOS'
+                $policyFile = 'policy-definitions/customCentralVmBackup.full.json'
+                if (-not (Test-Path $policyFile)) { Write-Host "Policy file not found: $policyFile"; exit 0 }
+                Write-Host "Creating policy definition $policyName from $policyFile (PUT via az rest)"
+                $curSub = az account show --query id -o tsv
+                  $rulesFile = 'policy-definitions/customCentralVmBackup.rules.json'
+                  $fullFile = 'policy-definitions/customCentralVmBackup.full.json'
+                  if (-not (Test-Path $rulesFile)) { Write-Host "Rules file not found: $rulesFile"; exit 0 }
+                  Write-Host "Creating policy definition $policyName from rules file $rulesFile"
+                  $paramsArg = $null
+                  if (Test-Path $fullFile) {
+                    try {
+                      $raw = Get-Content -Raw -Path $fullFile | ConvertFrom-Json
+                      if ($raw.properties -and $raw.properties.parameters) {
+                        $tmpParams = [System.IO.Path]::GetTempFileName() + '.json'
+                        $raw.properties.parameters | ConvertTo-Json -Depth 99 | Out-File -FilePath $tmpParams -Encoding utf8
+                        $paramsArg = $tmpParams
+                      }
+                    } catch {
+                      Write-Warning "Failed to parse full JSON params: $($_.Exception.Message)"
+                    }
+                  }
+                  try {
+                    if ($paramsArg) {
+                      az policy definition create --name $policyName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --params $paramsArg --mode Indexed -o json
+                    } else {
+                      az policy definition create --name $policyName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --mode Indexed -o json
+                    }
+                  } finally {
+                    if ($paramsArg -and (Test-Path $paramsArg)) { Remove-Item $paramsArg -Force }
+                  }
+                  Write-Host "Policy definition created. Showing stored policyRule snippet"
+                  az policy definition show -n $policyName --query properties.policyRule -o json | ConvertFrom-Json | ConvertTo-Json -Depth 6
   - stage: Remediate
     displayName: 'Auto-enable Backup Remediation'
-    dependsOn: BuildAndDeploy
+    dependsOn: DeployPolicyDefinition
     condition: and(succeeded(), eq('${{ parameters.enableAutoRemediation }}','true'))
     jobs:
       - job: RemediateTaggedVMs
