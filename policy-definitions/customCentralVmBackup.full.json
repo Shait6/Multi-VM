@@ -61,9 +61,6 @@
       "if": {
         "allOf": [
           { "field": "type", "equals": "Microsoft.Compute/virtualMachines" },
-          { "field": "id", "notContains": "/resourceGroups/databricks-rg-" },
-          { "field": "Microsoft.Compute/imagePublisher", "notEquals": "azureopenshift" },
-          { "field": "Microsoft.Compute/imagePublisher", "notEquals": "AzureDatabricks" },
           { "field": "location", "equals": "[parameters('vaultLocation')]" },
           { "field": "[concat('tags[', parameters('inclusionTagName'), ']')]", "in": "[parameters('inclusionTagValue')]" }
         ]
@@ -80,7 +77,7 @@
             "properties": {
               "mode": "incremental",
               "template": {
-                "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
                 "contentVersion": "1.0.0.0",
                 "parameters": {
                   "backupPolicyId": { "type": "String" },
@@ -91,43 +88,13 @@
                 },
                 "resources": [
                   {
-                    "apiVersion": "2017-05-10",
-                    "name": "[concat('DeployProtection-',uniqueString(parameters('protectedItems')))]",
-                    "type": "Microsoft.Resources/deployments",
-                    "resourceGroup": "[first(skip(split(parameters('backupPolicyId'), '/'), 4))]",
-                    "subscriptionId": "[first(skip(split(parameters('backupPolicyId'), '/'), 2))]",
+                    "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
+                    "name": "[concat(first(skip(split(parameters('backupPolicyId'), '/'), 8)), '/', parameters('fabricName'), '/', parameters('protectionContainers'), '/', parameters('protectedItems'))]",
+                    "apiVersion": "2016-06-01",
                     "properties": {
-                      "mode": "Incremental",
-                      "template": {
-                        "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
-                        "contentVersion": "1.0.0.0",
-                        "parameters": {
-                          "backupPolicyId": { "type": "String" },
-                          "fabricName": { "type": "String" },
-                          "protectionContainers": { "type": "String" },
-                          "protectedItems": { "type": "String" },
-                          "sourceResourceId": { "type": "String" }
-                        },
-                        "resources": [
-                          {
-                            "type": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
-                            "name": "[concat(first(skip(split(parameters('backupPolicyId'), '/'), 8)), '/', parameters('fabricName'), '/', parameters('protectionContainers'), '/', parameters('protectedItems'))]",
-                            "apiVersion": "2016-06-01",
-                            "properties": {
-                              "protectedItemType": "Microsoft.Compute/virtualMachines",
-                              "policyId": "[parameters('backupPolicyId')]",
-                              "sourceResourceId": "[parameters('sourceResourceId')]"
-                            }
-                          }
-                        ]
-                      },
-                      "parameters": {
-                        "backupPolicyId": { "value": "[parameters('backupPolicyId')]" },
-                        "fabricName": { "value": "Azure" },
-                        "protectionContainers": { "value": "[concat('iaasvmcontainer;iaasvmcontainerv2;', resourceGroup().name, ';', field('name'))]" },
-                        "protectedItems": { "value": "[concat('vm;iaasvmcontainerv2;', resourceGroup().name, ';', field('name'))]" },
-                        "sourceResourceId": { "value": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Compute/virtualMachines/', field('name'))]" }
-                      }
+                      "protectedItemType": "Microsoft.Compute/virtualMachines",
+                      "policyId": "[parameters('backupPolicyId')]",
+                      "sourceResourceId": "[parameters('sourceResourceId')]"
                     }
                   }
                 ]
