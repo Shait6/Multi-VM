@@ -143,49 +143,6 @@ foreach ($r in $targetRegions) {
   $assignName = "enable-vm-backup-anyos-$r"
   $uaiId = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
 
-  # Wait for the vault resource group and backup policy to exist before creating the assignment/remediation
-  $waitTimeoutMinutes = 5
-  $waitIntervalSeconds = 15
-  $waitDeadline = (Get-Date).AddMinutes($waitTimeoutMinutes)
-
-  Write-Host "Waiting up to $waitTimeoutMinutes minutes for resource group '$vaultRg' and backup policy '$policyName' in vault '$vaultName' to exist..."
-
-  while ((Get-Date) -lt $waitDeadline) {
-    try {
-      $rgExists = az group exists -n $vaultRg | Out-String | ForEach-Object { $_.Trim() }
-    } catch {
-      $rgExists = 'false'
-    }
-
-    if ($rgExists -ne 'true') {
-      Write-Host "Resource group '$vaultRg' not found yet. Sleeping $waitIntervalSeconds seconds..."
-      Start-Sleep -Seconds $waitIntervalSeconds
-      continue
-    }
-
-    # Construct the backup policy resource id (canonical vault-scoped path)
-    $policyId = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.RecoveryServices/vaults/$vaultName/backupPolicies/$policyName"
-    try {
-      $policyCheck = az resource show --ids $policyId -o json 2>$null | Out-Null
-      $policyExists = $LASTEXITCODE -eq 0
-    } catch {
-      $policyExists = $false
-    }
-
-    if (-not $policyExists) {
-      Write-Host "Backup policy resource '$policyId' not found yet. Sleeping $waitIntervalSeconds seconds..."
-      Start-Sleep -Seconds $waitIntervalSeconds
-      continue
-    }
-
-    Write-Host "Found vault RG and backup policy for region '$r'. Proceeding with assignment."
-    break
-  }
-
-  if ((Get-Date) -ge $waitDeadline) {
-    Write-Warning "Timed out waiting for vault RG '$vaultRg' and/or backup policy '$policyName' to appear. Proceeding anyway (assignments may fail)."
-  }
-
   Write-Host "Assigning custom ANY-OS policy $assignName (vault=$vaultName, policy=$policyName)"
   $customDefId = ''
   try { $customDefId = az policy definition show -n $CustomPolicyDefinitionName --query id -o tsv } catch { Write-Warning "Failed to resolve custom policy definition $($CustomPolicyDefinitionName): $($_.Exception.Message)" }
