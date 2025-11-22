@@ -2,7 +2,7 @@
 ## Multi-Region Azure VM Backup Automation
 
 ### 1. Overview
-This solution deploys and manages a standardized multi‑region Azure VM backup platform. It creates per‑region Recovery Services Vaults (RSVs), daily/weekly backup policies (optionally both), user‑assigned identities (UAIs), and role assignments. A DeployIfNotExists policy can automatically enable backup for tagged virtual machines, with remediation executed on demand.
+This solution deploys and manages a standardized multi‑region Azure VM backup platform. It creates per‑region Recovery Services Vaults (RSVs), daily/weekly backup policies (optionally both for future use), user‑assigned identities (UAIs), and role assignments. A DeployIfNotExists policy will automatically enable backup for tagged virtual machines, with remediation executed on demand.
 
 # Multi-Region Azure VM Backup
 
@@ -160,68 +160,13 @@ CI integration:
 - GitHub Actions: `.github/workflows/github-action.yml` — accepts the composite `retentionProfile` and other inputs.
 - Azure DevOps: `Pipeline/azure-pipelines.yml` — same stages, pipeline variables.
 
-Important: the `Start-BackupRemediation.ps1` script now waits for the vault resource group and policy to exist before attempting assignment; this avoids race conditions in CI.
+Important: the `Start-BackupRemediation.ps1` script now waits for the vault resource group and policy to exist before attempting assignment.
 
 ---
 
-## 7 — Troubleshooting & validation
+## 9 — Summary
 
-Common checks
-
-- Verify policy definition exists:
-```powershell
-az policy definition show -n Custom-CentralVmBackup-AnyOS --query properties.policyRule -o json
-```
-
-- Verify a backup policy resource resolves (sample):
-```powershell
-$sub = '<SUB_ID>'
-$rg = 'rsv-rg-swedencentral'
-$vault = 'rsv-swedencentral'
-$policy = 'backup-policy-swedencentral-weekly'  # or -daily
-$id = "/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.RecoveryServices/vaults/$vault/backupPolicies/$policy"
-az resource show --ids $id -o json
-```
-
-- Inspect remediation nested deployment operations (if a remediation deployment fails):
-```powershell
-az deployment operation group list --resource-group <rg> --name <nested-deployment-name> -o jsonc
-```
-
-Common errors and quick fixes
-
-- InvalidTemplate: `field` not valid
-  - Cause: `field()` used inside the nested ARM template body. Fix: ensure `field()` is only used by the policy engine and values are passed into nested deployment parameters. The repo has corrected policy JSON files.
-
-- ResourceGroup/Vault not found
-  - Cause: remediation ran before infra completed.
-  - Fix: wait for infra stage to finish; the `Start-BackupRemediation.ps1` script includes a wait loop for vault RG and policy existence.
-
----
-
-## 8 — Recommended hardening and improvements
-
-- Make remediation wait timeout configurable as a pipeline variable.
-- Add telemetry: poll remediation job and emit a JSON artifact/report listing protected items.
-- Consider least-privilege RBAC for the UAI (scoped to just necessary actions) after initial validation phase.
-
----
-
-## 9 — Contributing & support
-
-- Found a bug or want a feature? Open an issue or PR. Suggested improvements: reporting artifact, remediation polling, RBAC refinement.
-- For help debugging a failing remediation, include: policy assignment id, remediation name, and nested deployment error JSON from the Activity Log.
-
----
-
-If you want a shorter operator runbook (one-page) or an executive one-page summary, tell me the audience and I'll produce that variant.
-- **Per-region RSVs:** Keeps data residency and latency aligned with VM location and makes vault-scoped backup policies simpler to manage.
-- **Policy-driven remediation:** Using a custom DeployIfNotExists policy ensures detection and automated remediation for any VM with the configured tag, providing declarative, auditable enforcement.
-- **Custom any‑OS policy:** The built-in policy can be restrictive for newer images; a custom rule avoids image allow-lists so all VMs can be protected.
-- **User Assigned Identity (UAI) for remediation:** Allows the remediation to run with an identity the subscription owner controls and can scope with RBAC; easier to rotate and audit than inlined service principals.
-- **Bicep for infra as code:** Strong composability and parameterization across regions and resource groups.
-
-**Repository layout (what each file does)**
+**Repository layout**
 - `main.bicep` — Orchestrates subscription-scoped deployment: creates per-region resource groups (`rsv-rg-<region>`), Recovery Services Vaults (`rsv-<region>`), backup policy modules, UAIs, and RBAC.
 - `modules/recoveryVault.bicep` — Creates a Recovery Services Vault with chosen SKU and network settings.
 - `modules/backupPolicy.bicep` — Builds daily/weekly (or both) backup policies and outputs policy IDs and names.
@@ -235,7 +180,7 @@ If you want a shorter operator runbook (one-page) or an executive one-page summa
 - `scripts/Start-BackupRemediation.ps1` — Creates per-region policy assignment and triggers remediation run(s). Includes waiting logic to ensure vaults/policies exist before assigning.
 - `Pipeline/azure-pipelines.yml` & `.github/workflows/github-action.yml` — CI definitions. Both support deploying infra, creating the policy definition, and optionally triggering remediation.
 
-**What the solution provides (benefits)**
+**What the solution provides**
 - Automatic enforcement: VMs tagged with the configured name/value are detected and remediated automatically.
 - Multi-region parity: consistent vault and policy configuration across regions.
 - Auditability: Azure Policy assignments and remediation jobs are visible in the Portal and logs.
@@ -249,58 +194,8 @@ Prerequisites
 - For GitHub Actions: an Azure credential secret that `azure/login@v2` can use (e.g., `AZURE_CREDENTIALS`).
 - For Azure DevOps: a service connection with subscription scope allowing deployments and role assignments.
 
-Quick start — local / manual
-1. Authenticate and select subscription:
-```powershell
-az login
-az account set --subscription <SUB_ID>
-```
-2. Build and deploy infra (subscription scope):
-```powershell
-az bicep build --file main.bicep
-az deployment sub create --name multi-region-backup --location westeurope --template-file main.bicep --parameters \
-  backupFrequency=Weekly backupScheduleRunTimes='["23:00"]' backupTimeZone=UTC
-```
-3. Create policy definition (if not created by pipeline):
-```powershell
-az policy definition create --name Custom-CentralVmBackup-AnyOS --display-name "Central VM Backup (Any OS)" \
-  --rules policy-definitions/customCentralVmBackup.rules.json --mode Indexed
-```
-4. Trigger remediation (after infra completes):
-```powershell
-./scripts/Start-BackupRemediation.ps1 -SubscriptionId <SUB_ID> -Regions 'westeurope' -TagName 'backup' -TagValue 'true'
-```
-
 Pipeline usage
 - GitHub Actions: `/.github/workflows/github-action.yml` accepts the composite `retentionProfile` and other inputs. The workflow builds Bicep, deploys infra, creates the policy definition, and optionally runs remediation.
 - Azure DevOps: `Pipeline/azure-pipelines.yml` performs the same three stages (Build & Deploy, Deploy Policy Definition, Remediate) and exposes pipeline variables to control behavior.
 
-Parameter note — composite retention profile
-- Many pipeline/workflow inputs are consolidated into `retentionProfile` in the format:
-  `DailyDays|WeeklyWeeks|YearlyYears|TagName|TagValue`
-- Example: `14|5|0|backup|true` (Yearly=0 disables yearly tier).
-
-Troubleshooting
-- If remediation shows `InvalidTemplate: 'field' is not valid`:
-  - Ensure the policy definition was created from the `rules.json` (or `full.json`) that preserves policy expressions and that the nested deployment receives those evaluated values as parameters (the repo already contains the corrected files).
-- If remediation fails with `Resource group 'rsv-rg-<region>' not found` or `Vault not found`:
-  - Infra deployment and remediation must happen in order. Use the pipeline's Build & Deploy stage to create vaults first. The scripts now wait for the vault RG and policy to exist before assignment.
-- To inspect failing nested deployments:
-```powershell
-az deployment operation group list --resource-group <rg> --name <nested-deployment-name> -o jsonc
-```
-- Check policy assignment and remediation in the Portal: Policy → Assignments / Remediations.
-
-Recommended next steps / hardening
-- Make remediation wait timeout configurable via pipeline variable (easy addition) so long infra deployments have reliable time to finish.
-- Add a remediation result reporter that polls remediation job status and emits a JSON summary of protected items.
-
-Support and contributions
-- If you find an issue or want a feature (timeout behavior, verbosity, artifacts), open an issue or a PR in this repository. I can help implement timeouts, better reporting, or add unit tests for Bicep modules.
-
-License
-- This repository contains templates and scripts for infrastructure automation; include your organization's license or usage terms here.
-
----
-If you want the README tailored further (shorter executive summary, or extended step-by-step runbook), tell me the audience and I will produce that variant.
 
