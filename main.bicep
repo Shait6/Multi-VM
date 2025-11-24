@@ -118,10 +118,9 @@ module uais './modules/userAssignedIdentity.bicep' = [for (region, i) in regions
   dependsOn: [vaults[i]]
 }]
 
-// Assign RBAC role to UAI on each RSV RG using provided remediationRoleDefinitionId
-module rbac './modules/roleAssignment.bicep' = [for (region, i) in regions: {
-  name: 'roleAssignmentModule-${region}'
-  scope: resourceGroup(rgNames[i])
+// Assign RBAC role to UAI at subscription scope (one assignment per UAI)
+module rbacSub './modules/roleAssignmentSubscription.bicep' = [for (region, i) in regions: {
+  name: 'roleAssignmentSubModule-${region}'
   params: {
     principalId: uais[i].outputs.principalId
     principalType: 'ServicePrincipal'
@@ -129,9 +128,6 @@ module rbac './modules/roleAssignment.bicep' = [for (region, i) in regions: {
   }
   dependsOn: [uais[i]]
 }]
-
-// Ensure the remediation UAI also has Contributor at subscription scope
-// Note: subscription-scoped role assignment removed to enforce least-privilege (only RG-scoped assignments)
 
 // Export outputs as arrays for all regions
 output vaultIds array = [for (region, i) in regions: vaults[i].outputs.vaultId]

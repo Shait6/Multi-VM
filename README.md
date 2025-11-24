@@ -226,7 +226,7 @@ If you want a shorter operator runbook (one-page) or an executive one-page summa
 - `modules/recoveryVault.bicep` — Creates a Recovery Services Vault with chosen SKU and network settings.
 - `modules/backupPolicy.bicep` — Builds daily/weekly (or both) backup policies and outputs policy IDs and names.
 - `modules/userAssignedIdentity.bicep` — Creates per-region UAIs and exposes principal IDs.
-- `modules/roleAssignment.bicep` — Assign Contributor (or configured role) to the UAI at the vault/resource-group scope.
+- `modules/roleAssignmentSubscription.bicep` — Assign Contributor (or configured role) to the UAI at subscription scope.
 - `modules/assignCustomCentralBackupPolicy.bicep` — Creates a subscription-scoped policy assignment of the custom DeployIfNotExists policy and passes the vault/policy ID into the policy parameters.
 - `modules/backupAuditPolicy.bicep` — Creates an audit-only policy to report unprotected VMs (non-enforcing).
 - `policy-definitions/customCentralVmBackup.rules.json` — Policy rules (preferred for `az policy definition create` to preserve expressions).
