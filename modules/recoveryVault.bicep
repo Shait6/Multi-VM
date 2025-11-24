@@ -38,10 +38,10 @@ resource recoveryServicesVault 'Microsoft.RecoveryServices/vaults@2023-04-01' = 
       }
     }
   }, enableSoftDelete ? { softDeleteFeatureState: 'Enabled' } : {}, 
-  // backupStorageRedundancy is included as a provider-specific property to indicate desired replication.
-  // The exact property name and supported values may vary by API-version and subscription. If deployment fails,
-  // adjust this property to match your Azure environment.
-  { backupStorageRedundancy: backupStorageRedundancy })
+  // Use the provider-supported property for Recovery Services Vault backup storage replication.
+  // 'storageModelType' is the property used by the Recovery Services Vault resource to indicate
+  // redundancy type (for example: 'GeoRedundant' or 'LocallyRedundant').
+  { storageModelType: backupStorageRedundancy })
 }
 
 output vaultId string = recoveryServicesVault.id
