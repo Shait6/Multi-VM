@@ -42,7 +42,7 @@ resource existingVault 'Microsoft.RecoveryServices/vaults@2023-04-01' existing =
 
 // Derived values
 var weeklyRetentionWeeks = int((weeklyRetentionDays + 6) / 7)
-// Convert times to ISO 8601 Z (as seen in working templates)
+// Convert times to ISO 
 var isoRunTimes = [for t in backupScheduleRunTimes: (contains(t, 'T') ? t : '2016-09-21T${t}:00Z')]
 // Clamp daily instant restore to 1..5; weekly must be 5 (enforced below)
 var dailyInstantRestoreDays = min(max(instantRestoreRetentionDays, 1), 5)
@@ -113,7 +113,7 @@ resource backupPolicyDaily 'Microsoft.RecoveryServices/vaults/backupPolicies@202
         }
       }
     }
-    // Tiering policy optional; omit to reduce API surface differences
+    // Tiering policy optional
     instantRpRetentionRangeInDays: dailyInstantRestoreDays
     timeZone: backupTimeZone
   }
@@ -133,7 +133,6 @@ resource backupPolicyWeekly 'Microsoft.RecoveryServices/vaults/backupPolicies@20
       scheduleRunTimes: isoRunTimes
     }
     retentionPolicy: retentionPolicyWeekly
-    // Tiering policy optional; omit to reduce API surface differences
     // Azure requires 5 days when schedule is Weekly
     instantRpRetentionRangeInDays: 5
     timeZone: backupTimeZone
@@ -148,10 +147,10 @@ var weeklyPolicyName = (backupFrequency == 'Weekly' || backupFrequency == 'Both'
 
 output backupPolicyIds array = concat((dailyPolicyId != '') ? [dailyPolicyId] : [], (weeklyPolicyId != '') ? [weeklyPolicyId] : [])
 output backupPolicyNames array = concat((dailyPolicyName != '') ? [dailyPolicyName] : [], (weeklyPolicyName != '') ? [weeklyPolicyName] : [])
-// Pass-through so callers depending on these params remain valid
+
 output monthlyRetentionEnabled bool = enableMonthlyRetention
 output yearlyRetentionEnabled bool = enableYearlyRetention
-// Mark otherwise unused parameters as used via a dummy calc output (benign)
+
 output _unusedParams object = {
   instantRestoreRetentionDays: instantRestoreRetentionDays
   monthlyRetentionMonths: monthlyRetentionMonths

@@ -23,10 +23,6 @@ param backupPolicyName string
 // Vault resource group follows deployment convention 'rsv-rg-<region>' where assignmentLocation == region
 var vaultRgName = 'rsv-rg-${assignmentLocation}'
 
-// Construct the full resourceId of the backup policy (includes subscription and resource group)
-// This module targets subscription scope, so use subscriptionResourceId to include the resource group correctly
-// Build the fully qualified resourceId for the backup policy in the regional vault.
-// Use resourceId(subscriptionId, resourceGroupName, resourceType, name...) so the resource group is included.
 // Construct canonical resource Id: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.RecoveryServices/vaults/{vaultName}/backupPolicies/{policyName}
 var backupPolicyIdResolved = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${vaultRgName}/providers/Microsoft.RecoveryServices/vaults/${vaultName}/backupPolicies/${backupPolicyName}'
 
@@ -34,8 +30,8 @@ resource policyAssign 'Microsoft.Authorization/policyAssignments@2021-06-01' = {
   name: policyAssignmentName
   location: assignmentLocation
   properties: {
-    displayName: 'Enable VM backup (Custom Any OS) - ${assignmentLocation}'
-    description: 'Assign custom policy to back up any tagged VMs to the regional vault using specified backup policy.'
+    displayName: 'Enable VM backup - ${assignmentLocation}'
+    description: 'Assign custom policy to backup any tagged VMs to the regional vault using specified backup policy.'
     policyDefinitionId: customPolicyDefinitionId
     parameters: {
       vaultLocation: { value: assignmentLocation }

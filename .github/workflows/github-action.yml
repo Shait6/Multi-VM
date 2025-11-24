@@ -150,7 +150,6 @@ jobs:
       SUBSCRIPTION_ID: ${{ github.event.inputs.subscriptionId }}
       DEPLOYMENT_LOCATION: ${{ github.event.inputs.deploymentLocation }}
       BACKUP_FREQUENCY: ${{ github.event.inputs.backupFrequency }}
-      # Correct output reference (job name is deploy_infrastructure)
       VM_TAG_NAME: ${{ needs.deploy_infrastructure.outputs.vmTagName }}
       VM_TAG_VALUE: ${{ needs.deploy_infrastructure.outputs.vmTagValue }}
       REMEDIATION_REGIONS: ${{ github.event.inputs.remediationRegions }}

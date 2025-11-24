@@ -204,5 +204,5 @@ stages:
                 $parts = "${{ parameters.retentionProfile }}".Split('|')
                 if ($parts.Count -ge 5) { $env:VM_TAG_NAME = $parts[3]; $env:VM_TAG_VALUE = $parts[4] }
                 . ./scripts/Start-BackupRemediation.ps1
-          # No long polling or artifacts; remediation visible in Policy > Remediations
+          
 

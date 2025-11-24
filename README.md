@@ -155,6 +155,8 @@ Main pipeline variables (high level):
 | `retentionProfile` | Composite retention + tag value (see above) |
 | `backupScheduleTimeString` | Daily/weekly run time (HH:mm) |
 | `enableAutoRemediation` | `true` to assign and trigger policy remediation |
+ - `enableSoftDelete` | `true`/`false` to enable Backup soft-delete for created Recovery Services Vaults (default: `true`) |
+| `backupStorageRedundancy` | `LocallyRedundant` / `GeoRedundant` / `ZoneRedundant` to set vault backup storage replication (default: `GeoRedundant`) |
 
 CI integration:
 - GitHub Actions: `.github/workflows/github-action.yml` — accepts the composite `retentionProfile` and other inputs.
