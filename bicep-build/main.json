@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "9124212951917892314"
+      "templateHash": "4703533961388467852"
     }
   },
   "parameters": {
@@ -155,18 +155,6 @@
       ],
       "metadata": {
         "description": "Public network access setting for vaults"
-      }
-    },
-    "vaultSkuName": {
-      "type": "string",
-      "metadata": {
-        "description": "Recovery Services Vault SKU name"
-      }
-    },
-    "vaultSkuTier": {
-      "type": "string",
-      "metadata": {
-        "description": "Recovery Services Vault SKU tier"
       }
     },
     "remediationRoleDefinitionId": {
@@ -750,7 +738,7 @@
             "value": "[parameters('softDeleteSettings')]"
           },
           "tags": {
-            "value": "[union(parameters('tags'), createObject('vaultSkuName', parameters('vaultSkuName'), 'vaultSkuTier', parameters('vaultSkuTier')))]"
+            "value": "[parameters('tags')]"
           },
           "backupPolicies": {
             "value": "[variables('backupPoliciesPerRegion')[copyIndex()]]"
@@ -4329,10 +4317,14 @@
       ]
     },
     {
+      "copy": {
+        "name": "uai",
+        "count": "[length(range(0, 1))]"
+      },
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "[format('userAssignedIdentityModule-{0}', variables('regions')[0])]",
-      "resourceGroup": "[variables('rgNames')[0]]",
+      "name": "[format('userAssignedIdentityModule-{0}', variables('regions')[range(0, 1)[copyIndex()]])]",
+      "resourceGroup": "[variables('rgNames')[range(0, 1)[copyIndex()]]]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -4340,10 +4332,10 @@
         "mode": "Incremental",
         "parameters": {
           "name": {
-            "value": "[variables('uaiNames')[0]]"
+            "value": "[variables('uaiNames')[range(0, 1)[copyIndex()]]]"
           },
           "location": {
-            "value": "[variables('regions')[0]]"
+            "value": "[variables('regions')[range(0, 1)[copyIndex()]]]"
           },
           "tags": {
             "value": "[parameters('tags')]"
@@ -4809,7 +4801,7 @@
         "mode": "Incremental",
         "parameters": {
           "principalId": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[0]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[0])), '2025-04-01').outputs.principalId.value]"
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[range(0, 1)[0]]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[range(0, 1)[0]])), '2025-04-01').outputs.principalId.value]"
           },
           "roleDefinitionIdOrName": {
             "value": "[parameters('remediationRoleDefinitionId')]"
@@ -4991,7 +4983,7 @@
         }
       },
       "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[0]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[0]))]"
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[range(0, 1)[0]]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[range(0, 1)[0]]))]"
       ]
     }
   ],
@@ -5005,15 +4997,17 @@
     },
     "userAssignedIdentityIds": {
       "type": "array",
-      "value": [
-        "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[0]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[0])), '2025-04-01').outputs.resourceId.value]"
-      ]
+      "copy": {
+        "count": "[length(range(0, 1))]",
+        "input": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[range(0, 1)[range(0, 1)[copyIndex()]]]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[range(0, 1)[range(0, 1)[copyIndex()]]])), '2025-04-01').outputs.resourceId.value]"
+      }
     },
     "userAssignedIdentityPrincipalIds": {
       "type": "array",
-      "value": [
-        "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[0]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[0])), '2025-04-01').outputs.principalId.value]"
-      ]
+      "copy": {
+        "count": "[length(range(0, 1))]",
+        "input": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[range(0, 1)[range(0, 1)[copyIndex()]]]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[range(0, 1)[range(0, 1)[copyIndex()]]])), '2025-04-01').outputs.principalId.value]"
+      }
     }
   }
 }
