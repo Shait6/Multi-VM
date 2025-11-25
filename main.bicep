@@ -129,64 +129,56 @@ var backupPoliciesPerRegion = [for (region, i) in regions: concat(
 // (policy ids/names can be derived if needed by running `az bicep build` and/or after deployment)
 
 @description('Backup schedule run times (UTC HH:mm) applied to all region policies')
-param backupScheduleRunTimes array = [ '01:00' ]
+param backupScheduleRunTimes array
 @description('Daily retention in days (>=7)')
 @minValue(7)
-param dailyRetentionDays int = 14
+param dailyRetentionDays int
 @description('Weekly retention in days (>=7; converted to weeks internally)')
 @minValue(7)
-param weeklyRetentionDays int = 30
+param weeklyRetentionDays int
 @description('Days of week for weekly backups')
-param weeklyBackupDaysOfWeek array = [ 'Sunday', 'Wednesday' ]
+param weeklyBackupDaysOfWeek array
 @allowed([ 'Daily', 'Weekly', 'Both' ])
 @description('Backup frequency for VM policies across regions')
-param backupFrequency string = 'Daily'
+param backupFrequency string
 @description('Backup schedule timezone (e.g., UTC)')
-param backupTimeZone string = 'UTC'
+param backupTimeZone string
 @description('Instant Restore snapshot retention in days')
-param instantRestoreRetentionDays int = 2
+param instantRestoreRetentionDays int
 @description('Enable additional monthly retention tier (for weekly policy)')
-param enableMonthlyRetention bool = false
+param enableMonthlyRetention bool
 @description('Monthly retention duration in months')
-param monthlyRetentionMonths int = 60
+param monthlyRetentionMonths int
 @description('Monthly retention weeks of the month')
-param monthlyWeeksOfMonth array = [ 'First' ]
+param monthlyWeeksOfMonth array
 @description('Monthly retention days of the week')
-param monthlyDaysOfWeek array = [ 'Sunday' ]
+param monthlyDaysOfWeek array
 @description('Enable additional yearly retention tier (for weekly policy)')
-param enableYearlyRetention bool = false
+param enableYearlyRetention bool
 @description('Yearly retention duration in years')
-param yearlyRetentionYears int = 10
+param yearlyRetentionYears int
 @description('Yearly retention months of year')
-param yearlyMonthsOfYear array = [ 'January', 'February', 'March' ]
+param yearlyMonthsOfYear array
 @description('Yearly retention weeks of the month')
-param yearlyWeeksOfMonth array = [ 'First' ]
+param yearlyWeeksOfMonth array
 @description('Yearly retention days of the week')
-param yearlyDaysOfWeek array = [ 'Sunday' ]
+param yearlyDaysOfWeek array
 @allowed([ 'Enabled', 'Disabled' ])
 @description('Public network access setting for vaults')
-param publicNetworkAccess string = 'Enabled'
+param publicNetworkAccess string
 @description('Recovery Services Vault SKU name')
-param vaultSkuName string = 'RS0'
+param vaultSkuName string
 @description('Recovery Services Vault SKU tier')
-param vaultSkuTier string = 'Standard'
+param vaultSkuTier string
 
 @description('Role Definition ID or GUID for remediation identity ( Contributor )')
-param remediationRoleDefinitionId string = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
+param remediationRoleDefinitionId string
 
 // Soft-delete defaults for AVM
-param softDeleteSettings object = {
-  enhancedSecurityState: 'Enabled'
-  softDeleteRetentionPeriodInDays: 14
-  softDeleteState: 'Enabled'
-}
+param softDeleteSettings object
 
 // Default tags applied to vault resources
-param tags object = {
-  Environment: 'Non-Prod'
-  'hidden-title': 'This is visible in the resource name'
-  Role: 'DeploymentValidation'
-}
+param tags object
 
 // Create resource groups in each region using AVM `resource-group` module
 module rgs 'br:mcr.microsoft.com/bicep/avm/res/resources/resource-group:0.4.0' = [for (region, i) in regions: {

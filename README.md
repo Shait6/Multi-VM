@@ -1,29 +1,27 @@
 
-## Multi-Region Azure VM Backup Automation
+````markdown
+
+## Multi-Region Azure VM Backup Automation (AVM-based)
 
 ### 1. Overview
-This solution deploys and manages a standardized multi‑region Azure VM backup platform. It creates per‑region Recovery Services Vaults (RSVs), daily/weekly backup policies (optionally both for future use), user‑assigned identities (UAIs), and role assignments. A DeployIfNotExists policy will automatically enable backup for tagged virtual machines, with remediation executed on demand.
+This repository automates enabling Azure Backup for Virtual Machines across multiple regions using Bicep and Azure Verified Modules (AVM). The solution creates per-region Recovery Services Vaults (RSVs), backup policies, a single User Assigned Identity (UAI) used for remediation, and a custom DeployIfNotExists policy that is assigned per-region to remediate tagged VMs.
 
-# Multi-Region Azure VM Backup
-
-High-quality, policy-driven automation to centrally enable Azure Backup for Virtual Machines across multiple regions. This repository contains Bicep modules, policy definitions and automation scripts to:
-
-- Deploy per-region Recovery Services Vaults (RSVs) and backup policies
-- Create User Assigned Identities (UAIs) and RBAC assignments for remediation
-- Register a custom DeployIfNotExists policy to enable backup for tagged VMs
-- Trigger idempotent remediation runs from CI (GitHub Actions or Azure DevOps)
+Key changes in this branch:
+- Core infra (vaults, UAIs, role assignments, resource-groups) now use Azure Verified Modules (AVM) instead of local module implementations. That reduces maintenance and aligns with community-approved patterns.
+- Parameter defaults are centralized in `parameters/main.parameters.json`. CI and deployment scripts merge runtime overrides with these defaults.
+- The custom policy and its per-region assignment remain local (`modules/assignCustomCentralBackupPolicy.bicep`) because the remediation contains environment-specific nested templates.
 
 ---
 
 ## Table of contents
 
 1. Quick snapshot
-2. Why this design (architecture rationale)
-3. Architecture (logical view)
-4. Repository layout (concise)
+2. Architecture (logical view)
+3. Repository layout
+4. How this works now (AVM + parameters)
 5. Quick start — local and CI
 6. Parameters and pipeline notes
-7. Troubleshooting & validation
+7. Troubleshooting & AVM restore guidance
 8. Recommended hardening
 9. Contributing & support
 
@@ -32,37 +30,14 @@ High-quality, policy-driven automation to centrally enable Azure Backup for Virt
 ## 1 — Quick snapshot
 
 - Target: Automatically enable Azure Backup for VMs tagged with a configurable tag name/value, across multiple regions.
-- Deployment: Bicep (`main.bicep`) at subscription scope creates vaults, backup policies, UAIs and RBAC.
-- Remediation: A custom policy `Custom-CentralVmBackup-AnyOS` is assigned per-region; `DeployIfNotExists` creates protected items in the vault.
+- Deployment: `main.bicep` (subscription scope) orchestrates AVM registry modules to create vaults, policies, a single UAI and RBAC.
+- Remediation: `Custom-CentralVmBackup-AnyOS` (custom policy) is created and assigned per-region. `DeployIfNotExists` remediation uses the UAI.
 
-Use case: central, auditable backup enablement without hand‑operating backups for each VM.
-
----
-
-## 2 — Why this design (architecture rationale)
-
-- Per-region Recovery Services Vaults
-  - Data locality and latency — backups are stored in a vault within the same region as the VMs.
-  - Vault-scoped backup policies make policy selection and policy id resolution deterministic.
-
-- Policy-driven remediation (DeployIfNotExists)
-  - Declarative and auditable: Azure Policy identifies non-compliant VMs and runs remediation jobs that create protected items.
-  - Idempotent: repeatable remediation avoids duplicate resources.
-
-- Custom any‑OS policy
-  - Avoids being blocked by image allow-lists (important for new distro versions). Ensures broader coverage of VMs.
-
-- User Assigned Identity for remediation
-  - Runs remediation under an identity you control and can audit via Azure AD and role assignments.
-
-- Bicep modules and scripts
-  - Reusable building blocks and simple CI integration (GitHub Actions / Azure DevOps).
+This branch focuses on making the template deterministic, centralizing defaults, and using AVM modules for core resources.
 
 ---
 
-## 3 — Architecture (logical view)
-
-ASCII diagram (high level):
+## 2 — Architecture (logical view)
 
 ```
                       +-------------------------+
@@ -72,9 +47,9 @@ ASCII diagram (high level):
                                   v
                     +-------------------------------+
                     | Subscription / main.bicep     |
-                    | - create rsv-rg-<region> Rgs  |
-                    | - create rsv-<region> vaults  |
-                    | - create policies & UAIs      |
+                    | - calls AVM modules           |
+                    | - parameters supplied from    |
+                    |   parameters/main.parameters.json
                     +-------------------------------+
                                   |
       +---------------------------+---------------------------+
@@ -86,115 +61,131 @@ ASCII diagram (high level):
                                                         (uses UAI as identity)
 ```
 
----
-
-## 4 — Repository layout (concise)
-
-- `main.bicep` — subscription-scoped orchestration
-- `modules/` — Bicep modules (assignCustomCentralBackupPolicy, backupAuditPolicy)
-- `policy-definitions/` — `customCentralVmBackup.rules.json` (rules) and `customCentralVmBackup.full.json` (full definition)
-- `scripts/` — PowerShell helpers:
-  - `Deploy-BackupInfra.ps1` — builds and deploys `main.bicep`
-  - `Start-BackupRemediation.ps1` — assigns policy and triggers remediation (includes wait/check logic)
-- `Pipeline/` and `.github/workflows/` — Azure DevOps & GitHub Actions CI definitions
+High-level differences vs. the previous approach:
+- AVM registry modules are used for resource-groups, vaults, managed identities and role assignments.
+- Parameter defaults live in `parameters/main.parameters.json` and are merged by `scripts/Deploy-BackupInfra.ps1` with any runtime overrides from CI.
 
 ---
 
-## 5 — Quick start
+## 3 — Repository layout
 
-Prereq: `az cli`, logged-in, and subscription context set. CI runners provide these.
+- `main.bicep` — subscription-scoped orchestrator that declares parameters and invokes AVM modules.
+- `parameters/main.parameters.json` — centralized defaults used by CI and the deploy script.
+- `modules/assignCustomCentralBackupPolicy.bicep` — subscription-scoped policy assignment for the custom DeployIfNotExists policy (kept local).
+- `modules/backupAuditPolicy.bicep` — audit-only policy module (local).
+- `policy-definitions/` — `customCentralVmBackup.rules.json` (rules-only, preferred) and `customCentralVmBackup.full.json` (full definition for az rest PUT when preserving expressions).
+- `scripts/Deploy-BackupInfra.ps1` — builds Bicep (CI does this) and deploys; it now merges repo parameter defaults with runtime overrides and prefers the compiled `bicep-build/main.json` when present.
+- `scripts/Start-BackupRemediation.ps1` — assigns the policy per-region and triggers remediations; it uses the local assignment module and UAI.
+- `Pipeline/azure-pipelines.yml` & `.github/workflows/github-action.yml` — CI definitions that run build and deploy stages.
 
-1) Authenticate and set subscription (local):
+---
+
+## 4 — How this works now (AVM + centralized params)
+
+1. CI or local developer runs `az bicep build --file main.bicep --outdir bicep-build`.
+   - This step attempts to restore AVM artifacts from the public registry (`br:mcr.microsoft.com/bicep/avm/...`) and will surface restore errors (BCP192) early.
+
+2. The deployment step runs `scripts/Deploy-BackupInfra.ps1` which:
+   - Loads defaults from `parameters/main.parameters.json` (if present).
+   - Overlays runtime-provided values (CI inputs or env vars) onto those defaults.
+   - Writes a merged `main-params.json` and then deploys using `bicep-build/main.json` when available (CI path) or `main.bicep` as fallback.
+
+3. `main.bicep` invokes AVM modules for resource-groups, Recovery Services Vaults and their `backupPolicies` parameter, the User Assigned Identity, and subscription-scope role assignment.
+
+4. After infra is created, the CI job (or `Start-BackupRemediation.ps1`) creates the `Custom-CentralVmBackup-AnyOS` policy definition (from the rules JSON) and then assigns it per-region using `modules/assignCustomCentralBackupPolicy.bicep` (local module). The assignment uses the resolved `backupPolicyId` to target the correct vault policy.
+
+Notes about parameters vs. declarations:
+- `main.bicep` declares the parameters (types and descriptions) but defaults are intentionally removed for centralized control. The values live in `parameters/main.parameters.json` so CI and pipelines can be the single source of truth.
+
+---
+
+## 5 — Quick start — local and CI
+
+Prerequisites
+- `az cli` and login (local); CI runners already provide Azure CLI.
+- Azure subscription with sufficient permissions for deployments, RBAC and policy operations.
+- Ensure `parameters/main.parameters.json` contains the values you want for default behavior in non-interactive runs.
+
+Local quick run (recommended to test compilation and parameter merge):
 
 ```powershell
-az login
-az account set --subscription <SUB_ID>
+# Build and generate merged params via the script
+pwsh .\scripts\Deploy-BackupInfra.ps1 -SubscriptionId <SUB_ID> -DeploymentLocation westeurope -BackupFrequency Weekly
+
+# Inspect merged parameters
+Get-Content -Raw .\main-params.json | ConvertFrom-Json | ConvertTo-Json -Depth 5
+
+# Optionally run a subscription-scope what-if or create command (use caution)
+az deployment sub what-if --name demo --location westeurope --template-file bicep-build\main.json --parameters @main-params.json
 ```
 
-2) Build & deploy infra (subscription scope):
+CI (GitHub Actions or Azure DevOps)
+- Both pipelines run `az bicep build --file main.bicep --outdir bicep-build` as a syntax/restore step and then run the deploy script which merges params and deploys the compiled template.
+- GitHub Actions workflow note: confirm the secret used by `azure/login@v2` exists (`AZURE_CREDENTIALS` or your chosen secret). The workflow currently references a secret named `serivcon` — verify that name or replace it with your secret name.
 
-```powershell
-az bicep build --file main.bicep
-az deployment sub create --name multi-region-backup --location westeurope --template-file main.bicep --parameters \
-  backupFrequency=Weekly backupScheduleRunTimes='["23:00"]' backupTimeZone=UTC
-```
-
-3) Create policy definition (optional; pipeline can create it):
-
-```powershell
-az policy definition create --name Custom-CentralVmBackup-AnyOS --display-name "Central VM Backup (Any OS)" \
-  --rules policy-definitions/customCentralVmBackup.rules.json --mode Indexed
-```
-
-4) Trigger remediation (after infra completes):
-
-```powershell
-./scripts/Start-BackupRemediation.ps1 -SubscriptionId <SUB_ID> -Regions 'westeurope' -TagName 'backup' -TagValue 'true'
-```
-
-Notes:
-- The pipeline files (`.github/workflows/github-action.yml` and `Pipeline/azure-pipelines.yml`) orchestrate the same steps and will create the policy definition and trigger remediation when `enableAutoRemediation` is set to `true`.
+Runtime overrides from CI
+- Use workflow/pipeline inputs for values you want to change at dispatch-time (e.g., `deploymentLocation`, `backupFrequency`, `retentionProfile`). The deploy script overlays these over `parameters/main.parameters.json`.
 
 ---
 
 ## 6 — Parameters and pipeline notes
 
-Composite retention profile (convenience):
+Centralized defaults: `parameters/main.parameters.json` — edit this file to change the repo-wide default behavior (schedules, retention, soft-delete, tags, SKU, etc.).
 
-```
-DailyDays|WeeklyWeeks|YearlyYears|TagName|TagValue
-Example: 14|5|0|backup|true
-```
+Dispatch-level overrides:
+- Pass the small number of values that vary per-run via pipeline inputs (examples in `.github/workflows/github-action.yml` and `Pipeline/azure-pipelines.yml`). The deploy script will merge them into `main-params.json` before deployment.
 
-Main pipeline variables (high level):
+Recommended parameter split:
+- Keep in `parameters/main.parameters.json`: retention policy details, schedule times, softDeleteSettings, vault SKUs, tags, remediation role definition id.
+- Keep as CI inputs (dispatch): `subscriptionId`, `deploymentLocation`, `backupFrequency`, `remediationRegions`, `enableAutoRemediation`.
 
-| Parameter | Meaning |
-|---|---|
-| `deploymentLocation` | Metadata location for subscription-scoped deployment (e.g., `westeurope`) |
-| `backupFrequency` | `Daily` / `Weekly` / `Both` |
-| `retentionProfile` | Composite retention + tag value (see above) |
-| `backupScheduleTimeString` | Daily/weekly run time (HH:mm) |
-| `enableAutoRemediation` | `true` to assign and trigger policy remediation |
- - `enableSoftDelete` | `true`/`false` to enable Backup soft-delete for created Recovery Services Vaults (default: `true`) |
-| `backupStorageRedundancy` | `LocallyRedundant` / `GeoRedundant` / `ZoneRedundant` to set vault backup storage replication (default: `GeoRedundant`) |
-
-CI integration:
-- GitHub Actions: `.github/workflows/github-action.yml` — accepts the composite `retentionProfile` and other inputs.
-- Azure DevOps: `Pipeline/azure-pipelines.yml` — same stages, pipeline variables.
-
-Important: the `Start-BackupRemediation.ps1` script now waits for the vault resource group and policy to exist before attempting assignment.
+Using the compiled artifact
+- CI will produce `bicep-build/main.json`. `Deploy-BackupInfra.ps1` prefers that compiled file so the deploy step is deterministic and avoids double compilation.
 
 ---
 
-## 9 — Summary
+## 7 — Troubleshooting & AVM restore guidance
 
-**Repository layout**
-- `main.bicep` — Orchestrates subscription-scoped deployment: creates per-region resource groups (`rsv-rg-<region>`), Recovery Services Vaults (`rsv-<region>`), backup policy modules, UAIs, and RBAC.
-> Note: this repository has been migrated to use Azure Verified Modules (AVM) for core infra (vaults, UAIs, role assignments and other resources). The only remaining local modules are for policy assignments and audit policies that operate at subscription/management group scope.
-- `modules/assignCustomCentralBackupPolicy.bicep` — Creates a subscription-scoped policy assignment of the custom DeployIfNotExists policy and passes the vault/policy ID into the policy parameters.
-- `modules/backupAuditPolicy.bicep` — Creates an audit-only policy to report unprotected VMs (non-enforcing).
-- `policy-definitions/customCentralVmBackup.rules.json` — Policy rules (preferred for `az policy definition create` to preserve expressions).
-- `policy-definitions/customCentralVmBackup.full.json` — Full policy definition JSON (useful for `az rest` PUT when exact JSON must be preserved).
-- `scripts/Deploy-BackupInfra.ps1` — Wrapper script that builds Bicep and deploys `main.bicep` with parsed parameters.
-- `scripts/Start-BackupRemediation.ps1` — Creates per-region policy assignment and triggers remediation run(s). Includes waiting logic to ensure vaults/policies exist before assigning.
-- `Pipeline/azure-pipelines.yml` & `.github/workflows/github-action.yml` — CI definitions. Both support deploying infra, creating the policy definition, and optionally triggering remediation.
+Common blocker: AVM artifact restore failures during `az bicep build` (error BCP192). This indicates the requested AVM artifact tag is not present in the public registry or registry access is blocked.
 
-**What the solution provides**
-- Automatic enforcement: VMs tagged with the configured name/value are detected and remediated automatically.
-- Multi-region parity: consistent vault and policy configuration across regions.
-- Auditability: Azure Policy assignments and remediation jobs are visible in the Portal and logs.
-- Reusability: Bicep modules and scripts can be adapted for other policy-based remediation scenarios.
+Steps to diagnose and fix AVM restore problems:
+1. Run a focused build locally to reproduce restore errors and see the HTTP details:
+
+```powershell
+az bicep build --file main.bicep --outdir bicep-build --no-progress
+```
+
+2. Inspect the failure line for the `br:mcr.microsoft.com/bicep/avm/...:tag` reference. Try a few actions:
+- Verify the tag referenced in `main.bicep` matches the published tag in the AVM GitHub repo for that module (sometimes `version.json` in the repo differs from the published registry tag which may include patch versions).
+- Try a patch variant of the tag (e.g., `0.11.1` vs `0.11`).
+- If your environment uses a proxy or has restricted egress, allowlist MCR (`mcr.microsoft.com`) or ensure the CI runner can reach the registry.
+
+3. If you determine a stable published tag, pin that exact tag in `main.bicep` for the module reference.
+
+4. If you prefer to temporarily bypass AVM while debugging, restore the archived local module implementation and point `main.bicep` back to it until AVM tags are pinned.
+
+Policy & nested template notes
+- The custom policy contains a nested deployment template that relies on `field()` expressions. We keep the `customCentralVmBackup.full.json` file and the `Start-BackupRemediation.ps1` script uses `az rest` PUT when needed to preserve the exact JSON (avoids expression mangling).
+
+---
+
+## 8 — Recommended hardening
+
+- Use GitHub secret `AZURE_CREDENTIALS` or a properly named secret for `azure/login@v2`. Confirm the action references your secret name.
+- Use a service principal with scoped permissions for CI; avoid using full owner where not necessary.
+- Consider a release gating process that pins AVM versions once validated in a test subscription and then promotes the pinned tags to main production runs.
+
+---
+
+## 9 — Contributing & support
+
+- To propose AVM version updates, create a branch that updates the module tag(s) in `main.bicep`, push and run the CI (the `az bicep build` step will validate restore). If the build succeeds, run deploy in a test subscription.
+- To change default behavior, update `parameters/main.parameters.json` and open a PR describing the change.
+- For troubleshooting help, include the `az bicep build` output and the exact `br:` references that failed to restore.
+
+````
 - Least-privilege path: remediation runs through UAIs, enabling stronger access controls over time.
 
+
+
 Prerequisites
-- Azure subscription and a principal with Owner or equivalent rights to create RBAC and policy assignments.
-- Registered providers: `Microsoft.RecoveryServices`, `Microsoft.ManagedIdentity`, `Microsoft.Authorization`, `Microsoft.PolicyInsights`.
-- Azure CLI installed where you run scripts (CI runners include this). Bicep support is required (`az bicep install` will be used by the scripts if missing).
-- For GitHub Actions: an Azure credential secret that `azure/login@v2` can use (e.g., `AZURE_CREDENTIALS`).
-- For Azure DevOps: a service connection with subscription scope allowing deployments and role assignments.
-
-Pipeline usage
-- GitHub Actions: `/.github/workflows/github-action.yml` accepts the composite `retentionProfile` and other inputs. The workflow builds Bicep, deploys infra, creates the policy definition, and optionally runs remediation.
-- Azure DevOps: `Pipeline/azure-pipelines.yml` performs the same three stages (Build & Deploy, Deploy Policy Definition, Remediate) and exposes pipeline variables to control behavior.
-
-

@@ -52,13 +52,41 @@ $paramObj = @{
   yearlyRetentionYears   = @{ value = $yearlyYears }
   remediationRoleDefinitionId = @{ value = $roleGuid }
 }
-$paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8
+$repoParamsPath = Join-Path -Path (Get-Location) -ChildPath 'parameters\main.parameters.json'
+$merged = @{
+  "$schema" = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'
+  contentVersion = '1.0.0.0'
+  parameters = @{}
+}
+
+if (Test-Path $repoParamsPath) {
+  try {
+    $repoJson = Get-Content -Raw -Path $repoParamsPath | ConvertFrom-Json
+    if ($repoJson.parameters) {
+      foreach ($p in $repoJson.parameters.PSObject.Properties.Name) {
+        $merged.parameters[$p] = $repoJson.parameters.$p
+      }
+    }
+  } catch {
+    Write-Warning "Failed to parse repo parameters file $repoParamsPath: $($_.Exception.Message)"
+  }
+}
+
+foreach ($k in $paramObj.Keys) {
+  $val = $paramObj[$k].value
+  $merged.parameters[$k] = @{ value = $val }
+}
+
+$merged | ConvertTo-Json -Depth 10 | Out-File main-params.json -Encoding utf8
 
 $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
 Write-Host "Starting deployment $deployName with frequency=$BackupFrequency days=$WeeklyDaysCsv"
 
+$compiledTemplate = Join-Path -Path (Get-Location) -ChildPath 'bicep-build\main.json'
+$templateFile = if (Test-Path $compiledTemplate) { $compiledTemplate } else { Join-Path -Path (Get-Location) -ChildPath 'main.bicep' }
+
 try {
-  az deployment sub create --name $deployName --location $DeploymentLocation --template-file main.bicep --parameters @main-params.json -o json > deployment.json
+  az deployment sub create --name $deployName --location $DeploymentLocation --template-file $templateFile --parameters @main-params.json -o json > deployment.json
 } catch {
   Write-Host "Deployment failed; collecting diagnostics..."
   az deployment sub show --name $deployName -o json > deployment-show.json 2>$null
