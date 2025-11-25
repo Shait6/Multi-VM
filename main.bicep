@@ -24,10 +24,10 @@ param regionShortLen int = 3
 var regionCodes = [for r in regions: toLower(substring(replace(r, ' ', ''), 0, regionShortLen))]
 
 // Resource group, vault, UAI and policy name generation (keeps names compact and deterministic)
-var rgNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}${envTag}${nameSep}${regionCodes[i]}', 0, nameMaxLength)]
-var vaultNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}vault${nameSep}${regionCodes[i]}', 0, nameMaxLength)]
-var uaiNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}uai${nameSep}${regionCodes[i]}', 0, nameMaxLength)]
-var backupPolicyNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}bkp${nameSep}${regionCodes[i]}', 0, nameMaxLength)]
+var rgNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}${envTag}${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}${envTag}${nameSep}${regionCodes[i]}')))]
+var vaultNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}vault${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}vault${nameSep}${regionCodes[i]}')))]
+var uaiNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}uai${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}uai${nameSep}${regionCodes[i]}')))]
+var backupPolicyNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}bkp${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}bkp${nameSep}${regionCodes[i]}')))]
 
 // Derived helper vars for backup policy construction (mirrors logic in modules/backupPolicy.bicep)
 var isoRunTimes = [for t in backupScheduleRunTimes: (contains(t, 'T') ? t : '2016-09-21T${t}:00Z')]
@@ -224,37 +224,37 @@ module vaults 'br:mcr.microsoft.com/bicep/avm/res/recovery-services/vault:0.11.1
 // We pass a per-region array constructed above.
 
 // Deploy a single User Assigned Identity (UAI) in the first region only.
-// The remediation flow only needs one UAI with subscription-level permissions.
-module uai 'br:mcr.microsoft.com/bicep/avm/res/managed-identity/user-assigned-identity:0.4.0' = {
-  name: 'userAssignedIdentityModule-${regions[0]}'
-  scope: resourceGroup(rgNames[0])
+// Make this a single-element array module (copy-style) so any compiler-generated
+// copyIndex usage is valid inside the module's deployment template.
+module uai 'br:mcr.microsoft.com/bicep/avm/res/managed-identity/user-assigned-identity:0.4.0' = [for i in range(0, 1): {
+  name: 'userAssignedIdentityModule-${regions[i]}'
+  scope: resourceGroup(rgNames[i])
   params: {
     // AVM module expects `name` for the user-assigned identity
-    name: uaiNames[0]
-    location: regions[0]
+    name: uaiNames[i]
+    location: regions[i]
     // preserve tags shape from top-level `tags` param if desired
     tags: tags
   }
   dependsOn: [vaults[0]]
-}
+}]
 
-// Assign RBAC role to UAI on each RSV RG using provided remediationRoleDefinitionId
-// Assign RBAC role to each UAI at subscription scope (one assignment per UAI)
-// Create a single subscription-scope role assignment for the single UAI.
+// Assign RBAC role to UAI at subscription scope (one assignment for the single UAI).
 module rbacSub 'br:mcr.microsoft.com/bicep/avm/res/authorization/role-assignment/sub-scope:0.1.0' = {
   name: 'roleAssignmentSubModule-${regions[0]}'
   params: {
-    principalId: uai.outputs.principalId
+    principalId: uai[0].outputs.principalId
     // AVM parameter name is `roleDefinitionIdOrName`
     roleDefinitionIdOrName: remediationRoleDefinitionId
     principalType: 'ServicePrincipal'
   }
-  
 }
 
 // Export outputs as arrays for all regions
 output vaultIds array = [for (region, i) in regions: vaults[i].outputs.resourceId]
 // backup policy ids/names are created under each vault; derive them after build/deploy if needed
 // Export the single UAI as single-element arrays to avoid breaking consumers
-output userAssignedIdentityIds array = [uai.outputs.resourceId]
-output userAssignedIdentityPrincipalIds array = [uai.outputs.principalId]
+// `uai` is a single-element module array; expose outputs as arrays to keep
+// consumers unchanged.
+output userAssignedIdentityIds array = [for i in range(0, 1): uai[i].outputs.resourceId]
+output userAssignedIdentityPrincipalIds array = [for i in range(0, 1): uai[i].outputs.principalId]

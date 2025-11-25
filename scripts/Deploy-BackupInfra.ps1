@@ -21,6 +21,37 @@ $instant = [int]($InstantRestoreDays | ForEach-Object { if($_){$_} else {2} })
 if ($BackupFrequency -eq 'Weekly') { $instant = 5 }
 
 # Parse composite retention profile DailyDays|WeeklyWeeks|YearlyYears|TagName|TagValue
+$repoParamsPath = Join-Path -Path (Get-Location) -ChildPath 'parameters\main.parameters.json'
+$repoJson = $null
+if (Test-Path $repoParamsPath) {
+  try {
+    $repoJson = Get-Content -Raw -Path $repoParamsPath | ConvertFrom-Json
+  } catch {
+    Write-Warning "Failed to read repo parameters from ${repoParamsPath}: $($_.Exception.Message)"
+  }
+}
+
+if (-not $RetentionProfile -and $repoJson) {
+  # Prefer an explicit composite value if present
+  if ($repoJson.parameters -and $repoJson.parameters.retentionProfile -and $repoJson.parameters.retentionProfile.value) {
+    $RetentionProfile = $repoJson.parameters.retentionProfile.value
+    Write-Host "Using retentionProfile from repo parameters: $RetentionProfile"
+  } else {
+    # Construct composite from individual repo parameter values where available
+    $d = 14; $w = 30; $y = 0; $tn = 'backup'; $tv = 'true'
+    try { if ($repoJson.parameters.dailyRetentionDays -and $repoJson.parameters.dailyRetentionDays.value) { $d = $repoJson.parameters.dailyRetentionDays.value } } catch {}
+    try { if ($repoJson.parameters.weeklyRetentionDays -and $repoJson.parameters.weeklyRetentionDays.value) { $w = $repoJson.parameters.weeklyRetentionDays.value } } catch {}
+    try { if ($repoJson.parameters.yearlyRetentionYears -and $repoJson.parameters.yearlyRetentionYears.value) { $y = $repoJson.parameters.yearlyRetentionYears.value } } catch {}
+    # Tag name/value default; Start-BackupRemediation expects VM tag name/value coming from the composite profile
+    try {
+      if ($repoJson.parameters.vmTagName -and $repoJson.parameters.vmTagName.value) { $tn = $repoJson.parameters.vmTagName.value }
+      if ($repoJson.parameters.vmTagValue -and $repoJson.parameters.vmTagValue.value) { $tv = $repoJson.parameters.vmTagValue.value }
+    } catch {}
+    $RetentionProfile = "${d}|${w}|${y}|${tn}|${tv}"
+    Write-Host "Constructed retentionProfile from repo parameters: $RetentionProfile"
+  }
+}
+
 $parts = $RetentionProfile.Split('|')
 if ($parts.Count -lt 5) { throw "Invalid retentionProfile format '$RetentionProfile'. Expected Daily|Weekly|Yearly|TagName|TagValue (e.g. 14|30|0|backup|true)." }
 $dailyRetention   = [int]$parts[0]
@@ -52,23 +83,21 @@ $paramObj = @{
   yearlyRetentionYears   = @{ value = $yearlyYears }
   remediationRoleDefinitionId = @{ value = $roleGuid }
 }
-$repoParamsPath = Join-Path -Path (Get-Location) -ChildPath 'parameters\main.parameters.json'
 $merged = @{
   "$schema" = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'
   contentVersion = '1.0.0.0'
   parameters = @{}
 }
 
-if (Test-Path $repoParamsPath) {
+if ($repoJson) {
   try {
-    $repoJson = Get-Content -Raw -Path $repoParamsPath | ConvertFrom-Json
     if ($repoJson.parameters) {
       foreach ($p in $repoJson.parameters.PSObject.Properties.Name) {
         $merged.parameters[$p] = $repoJson.parameters.$p
       }
     }
   } catch {
-    Write-Warning "Failed to parse repo parameters file $repoParamsPath: $($_.Exception.Message)"
+    Write-Warning "Failed to parse repo parameters file ${repoParamsPath}: $($_.Exception.Message)"
   }
 }
 
@@ -92,6 +121,21 @@ try {
   az deployment sub show --name $deployName -o json > deployment-show.json 2>$null
   az deployment operation sub list --name $deployName -o json > deployment-operations.json 2>$null
   if (Test-Path deployment.json) { Get-Content deployment.json | Write-Host }
+
+  # If we attempted using a compiled template, try a fallback to deploy from the source Bicep file.
+  if ($templateFile -ne (Join-Path -Path (Get-Location) -ChildPath 'main.bicep')) {
+    Write-Warning "Compiled template deployment failed; attempting fallback deploy using source Bicep file 'main.bicep'."
+    try {
+      az deployment sub create --name "${deployName}-fallback" --location $DeploymentLocation --template-file (Join-Path -Path (Get-Location) -ChildPath 'main.bicep') --parameters @main-params.json -o json > deployment-fallback.json
+      Write-Host "Fallback deployment succeeded (outputs saved to deployment-fallback.json)"
+      return
+    } catch {
+      Write-Warning "Fallback deployment also failed: $($_.Exception.Message)"
+      az deployment sub show --name "${deployName}-fallback" -o json > deployment-show-fallback.json 2>$null
+      az deployment operation sub list --name "${deployName}-fallback" -o json > deployment-operations-fallback.json 2>$null
+    }
+  }
+
   throw
 }
 

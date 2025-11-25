@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "923006724397528799"
+      "templateHash": "9124212951917892314"
     }
   },
   "parameters": {
@@ -192,22 +192,22 @@
       {
         "name": "rgNames",
         "count": "[length(variables('regions'))]",
-        "input": "[substring(format('{0}{1}{2}{3}{4}', parameters('namePrefix'), parameters('nameSep'), parameters('envTag'), parameters('nameSep'), variables('regionCodes')[copyIndex('rgNames')]), 0, parameters('nameMaxLength'))]"
+        "input": "[substring(format('{0}{1}{2}{3}{4}', parameters('namePrefix'), parameters('nameSep'), parameters('envTag'), parameters('nameSep'), variables('regionCodes')[copyIndex('rgNames')]), 0, min(parameters('nameMaxLength'), length(format('{0}{1}{2}{3}{4}', parameters('namePrefix'), parameters('nameSep'), parameters('envTag'), parameters('nameSep'), variables('regionCodes')[copyIndex('rgNames')]))))]"
       },
       {
         "name": "vaultNames",
         "count": "[length(variables('regions'))]",
-        "input": "[substring(format('{0}{1}vault{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('vaultNames')]), 0, parameters('nameMaxLength'))]"
+        "input": "[substring(format('{0}{1}vault{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('vaultNames')]), 0, min(parameters('nameMaxLength'), length(format('{0}{1}vault{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('vaultNames')]))))]"
       },
       {
         "name": "uaiNames",
         "count": "[length(variables('regions'))]",
-        "input": "[substring(format('{0}{1}uai{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('uaiNames')]), 0, parameters('nameMaxLength'))]"
+        "input": "[substring(format('{0}{1}uai{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('uaiNames')]), 0, min(parameters('nameMaxLength'), length(format('{0}{1}uai{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('uaiNames')]))))]"
       },
       {
         "name": "backupPolicyNames",
         "count": "[length(variables('regions'))]",
-        "input": "[substring(format('{0}{1}bkp{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('backupPolicyNames')]), 0, parameters('nameMaxLength'))]"
+        "input": "[substring(format('{0}{1}bkp{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('backupPolicyNames')]), 0, min(parameters('nameMaxLength'), length(format('{0}{1}bkp{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('backupPolicyNames')]))))]"
       },
       {
         "name": "isoRunTimes",

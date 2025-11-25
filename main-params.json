@@ -1,0 +1,97 @@
+﻿{
+    "parameters":  {
+                       "backupScheduleRunTimes":  {
+                                                      "value":  [
+                                                                    ""
+                                                                ]
+                                                  },
+                       "backupFrequency":  {
+                                               "value":  "Weekly"
+                                           },
+                       "yearlyWeeksOfMonth":  {
+                                                  "value":  [
+                                                                "First"
+                                                            ]
+                                              },
+                       "yearlyRetentionYears":  {
+                                                    "value":  10
+                                                },
+                       "backupTimeZone":  {
+                                              "value":  ""
+                                          },
+                       "vaultSkuName":  {
+                                            "value":  "RS0"
+                                        },
+                       "monthlyWeeksOfMonth":  {
+                                                   "value":  [
+                                                                 "First"
+                                                             ]
+                                               },
+                       "remediationRoleDefinitionId":  {
+                                                           "value":  "b24988ac-6180-42a0-ab88-20f7382dd24c"
+                                                       },
+                       "monthlyRetentionMonths":  {
+                                                      "value":  60
+                                                  },
+                       "yearlyMonthsOfYear":  {
+                                                  "value":  [
+                                                                "January",
+                                                                "February",
+                                                                "March"
+                                                            ]
+                                              },
+                       "vaultSkuTier":  {
+                                            "value":  "Standard"
+                                        },
+                       "weeklyBackupDaysOfWeek":  {
+                                                      "value":  [
+                                                                    "Sunday",
+                                                                    "Wednesday"
+                                                                ]
+                                                  },
+                       "publicNetworkAccess":  {
+                                                   "value":  "Enabled"
+                                               },
+                       "softDeleteSettings":  {
+                                                  "value":  {
+                                                                "enhancedSecurityState":  "Enabled",
+                                                                "softDeleteRetentionPeriodInDays":  14,
+                                                                "softDeleteState":  "Enabled"
+                                                            }
+                                              },
+                       "enableMonthlyRetention":  {
+                                                      "value":  false
+                                                  },
+                       "tags":  {
+                                    "value":  {
+                                                  "Environment":  "Non-Prod",
+                                                  "hidden-title":  "This is visible in the resource name",
+                                                  "Role":  "DeploymentValidation"
+                                              }
+                                },
+                       "enableYearlyRetention":  {
+                                                     "value":  true
+                                                 },
+                       "instantRestoreRetentionDays":  {
+                                                           "value":  5
+                                                       },
+                       "monthlyDaysOfWeek":  {
+                                                 "value":  [
+                                                               "Sunday"
+                                                           ]
+                                             },
+                       "yearlyDaysOfWeek":  {
+                                                "value":  [
+                                                              "Sunday"
+                                                          ]
+                                            },
+                       "dailyRetentionDays":  {
+                                                  "value":  14
+                                              },
+                       "weeklyRetentionDays":  {
+                                                   "value":  210
+                                               }
+                   },
+    "contentVersion":  "1.0.0.0",
+    "":  "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"
+}

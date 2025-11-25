@@ -1,0 +1,13 @@
+# Ignore transient deployment diagnostic files created during testing
+/deployment*.json
+/deployment-*.json
+/deployment-outputs.json
+/deployment-operations.json
+/deployment-fallback.json
+/*-show.json
+/*-whatif.json
+/bicep-build/*.diagnostics.json
+
+# Optional: ignore local compiled templates (if you prefer to keep compiled artifacts out)
+# Uncomment if you don't want compiled artifacts committed
+# /bicep-build/*.json
