@@ -8,13 +8,125 @@ var regions = [
   'germanywestcentral'
 ]
 
-// Resource group name pattern
-var rgNames = [for region in regions: 'rsv-rg-${region}']
+// Naming configuration (compact convention: <prefix><sep><env><sep><regionCode>)
+@description('Name prefix for resources (short)')
+param namePrefix string = 'rsv'
+@description('Environment tag (short, e.g., prod, np)')
+param envTag string = 'np'
+@description('Separator used between name segments')
+param nameSep string = '-'
+@description('Maximum length for generated names (will be truncated)')
+param nameMaxLength int = 24
+@description('Number of characters to take from region name to form a region code')
+param regionShortLen int = 3
 
-// Vault and UAI name patterns
-var vaultNames = [for region in regions: 'rsv-${region}']
-var uaiNames = [for region in regions: 'uai-${region}']
-var backupPolicyNames = [for region in regions: 'backup-policy-${region}']
+// Simple region code generation (first N characters, lowercased, no spaces)
+var regionCodes = [for r in regions: toLower(substring(replace(r, ' ', ''), 0, regionShortLen))]
+
+// Resource group, vault, UAI and policy name generation (keeps names compact and deterministic)
+var rgNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}${envTag}${nameSep}${regionCodes[i]}', 0, nameMaxLength)]
+var vaultNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}vault${nameSep}${regionCodes[i]}', 0, nameMaxLength)]
+var uaiNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}uai${nameSep}${regionCodes[i]}', 0, nameMaxLength)]
+var backupPolicyNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}bkp${nameSep}${regionCodes[i]}', 0, nameMaxLength)]
+
+// Derived helper vars for backup policy construction (mirrors logic in modules/backupPolicy.bicep)
+var isoRunTimes = [for t in backupScheduleRunTimes: (contains(t, 'T') ? t : '2016-09-21T${t}:00Z')]
+var weeklyRetentionWeeks = int((weeklyRetentionDays + 6) / 7)
+var dailyInstantRestoreDays = min(max(instantRestoreRetentionDays, 1), 5)
+
+var monthlyScheduleObj = enableMonthlyRetention ? {
+  monthlySchedule: {
+    retentionScheduleFormatType: 'Weekly'
+    retentionScheduleWeekly: {
+      daysOfTheWeek: monthlyDaysOfWeek
+      weeksOfTheMonth: monthlyWeeksOfMonth
+    }
+    retentionTimes: isoRunTimes
+    retentionDuration: {
+      count: monthlyRetentionMonths
+      durationType: 'Months'
+    }
+  }
+} : {}
+
+var yearlyScheduleObj = enableYearlyRetention ? {
+  yearlySchedule: {
+    retentionScheduleFormatType: 'Weekly'
+    monthsOfYear: yearlyMonthsOfYear
+    retentionScheduleWeekly: {
+      daysOfTheWeek: yearlyDaysOfWeek
+      weeksOfTheMonth: yearlyWeeksOfMonth
+    }
+    retentionTimes: isoRunTimes
+    retentionDuration: {
+      count: yearlyRetentionYears
+      durationType: 'Years'
+    }
+  }
+} : {}
+
+var retentionPolicyWeekly = union({
+  retentionPolicyType: 'LongTermRetentionPolicy'
+  weeklySchedule: {
+    daysOfTheWeek: weeklyBackupDaysOfWeek
+    retentionTimes: isoRunTimes
+    retentionDuration: {
+      count: weeklyRetentionWeeks
+      durationType: 'Weeks'
+    }
+  }
+}, monthlyScheduleObj, yearlyScheduleObj)
+
+// Build an array (per region) of backup policy objects compatible with AVM vault's `backupPolicies` parameter
+var backupPoliciesPerRegion = [for (region, i) in regions: concat(
+  (backupFrequency == 'Daily' || backupFrequency == 'Both') ? [
+    {
+      name: '${backupPolicyNames[i]}-daily'
+      properties: {
+        backupManagementType: 'AzureIaasVM'
+        policyType: 'V1'
+        schedulePolicy: {
+          schedulePolicyType: 'SimpleSchedulePolicy'
+          scheduleRunFrequency: 'Daily'
+          scheduleRunTimes: isoRunTimes
+        }
+        retentionPolicy: {
+          retentionPolicyType: 'LongTermRetentionPolicy'
+          dailySchedule: {
+            retentionTimes: isoRunTimes
+            retentionDuration: {
+              count: dailyRetentionDays
+              durationType: 'Days'
+            }
+          }
+        }
+        instantRpRetentionRangeInDays: dailyInstantRestoreDays
+        timeZone: backupTimeZone
+      }
+    }
+  ] : [],
+  (backupFrequency == 'Weekly' || backupFrequency == 'Both') ? [
+    {
+      name: '${backupPolicyNames[i]}-weekly'
+      properties: {
+        backupManagementType: 'AzureIaasVM'
+        policyType: 'V1'
+        schedulePolicy: {
+          schedulePolicyType: 'SimpleSchedulePolicy'
+          scheduleRunFrequency: 'Weekly'
+          scheduleRunDays: weeklyBackupDaysOfWeek
+          scheduleRunTimes: isoRunTimes
+        }
+        retentionPolicy: retentionPolicyWeekly
+        instantRpRetentionRangeInDays: 5
+        timeZone: backupTimeZone
+      }
+    }
+  ] : []
+)]
+
+// Compute policy IDs/names based on the backupPolicies we handed to the vault module
+// (policy ids/names can be derived if needed by running `az bicep build` and/or after deployment)
 
 @description('Backup schedule run times (UTC HH:mm) applied to all region policies')
 param backupScheduleRunTimes array = [ '01:00' ]
@@ -62,77 +174,95 @@ param vaultSkuTier string = 'Standard'
 @description('Role Definition ID or GUID for remediation identity ( Contributor )')
 param remediationRoleDefinitionId string = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
 
-// Create resource groups in each region
-resource rgs 'Microsoft.Resources/resourceGroups@2021-04-01' = [for (region, i) in regions: {
-  name: rgNames[i]
-  location: region
+// Soft-delete defaults for AVM
+param softDeleteSettings object = {
+  enhancedSecurityState: 'Enabled'
+  softDeleteRetentionPeriodInDays: 14
+  softDeleteState: 'Enabled'
+}
+
+// Default tags applied to vault resources
+param tags object = {
+  Environment: 'Non-Prod'
+  'hidden-title': 'This is visible in the resource name'
+  Role: 'DeploymentValidation'
+}
+
+// Create resource groups in each region using AVM `resource-group` module
+module rgs 'br:mcr.microsoft.com/bicep/avm/res/resources/resource-group:0.4.0' = [for (region, i) in regions: {
+  name: 'resourceGroupModule-${region}'
+  scope: subscription()
+  params: {
+    name: rgNames[i]
+    location: region
+    tags: tags
+  }
 }]
 
 // Deploy RSV, backup policy, UAI, and RBAC in each RG/region
-module vaults './modules/recoveryVault.bicep' = [for (region, i) in regions: {
+module vaults 'br:mcr.microsoft.com/bicep/avm/res/recovery-services/vault:0.11.1' = [for (region, i) in regions: {
   name: 'recoveryVaultModule-${region}'
   scope: resourceGroup(rgNames[i])
   params: {
-    vaultName: vaultNames[i]
+    // AVM required parameter
+    name: vaultNames[i]
+    // Optional but explicit: location and public network access
     location: region
     publicNetworkAccess: publicNetworkAccess
-    skuName: vaultSkuName
-    skuTier: vaultSkuTier
+    // Backup configuration: default to GeoRedundant storage model (can be adjusted)
+    backupConfig: {
+      storageModelType: 'GeoRedundant'
+      // softDeleteFeatureState is an AVM backupConfig property; keep Enabled to protect backups
+      softDeleteFeatureState: 'Enabled'
+    }
+    // Soft-delete settings (shape matches AVM softDeleteSettings)
+    softDeleteSettings: softDeleteSettings
+    // Surface SKU info in tags so values are tracked and avoid unused-parameter warnings
+    tags: union(tags, {
+      vaultSkuName: vaultSkuName
+      vaultSkuTier: vaultSkuTier
+    })
+    // Create backup policies via AVM vault module
+    backupPolicies: backupPoliciesPerRegion[i]
   }
   dependsOn: [rgs[i]]
 }]
 
-module policies './modules/backupPolicy.bicep' = [for (region, i) in regions: {
-  name: 'backupPolicyModule-${region}'
-  scope: resourceGroup(rgNames[i])
-  params: {
-    vaultName: vaultNames[i]
-    backupPolicyName: backupPolicyNames[i]
-    backupFrequency: backupFrequency
-    backupScheduleRunTimes: backupScheduleRunTimes
-    weeklyBackupDaysOfWeek: weeklyBackupDaysOfWeek
-    dailyRetentionDays: dailyRetentionDays
-    weeklyRetentionDays: weeklyRetentionDays
-    backupTimeZone: backupTimeZone
-    instantRestoreRetentionDays: instantRestoreRetentionDays
-    enableMonthlyRetention: enableMonthlyRetention
-    monthlyRetentionMonths: monthlyRetentionMonths
-    monthlyWeeksOfMonth: monthlyWeeksOfMonth
-    monthlyDaysOfWeek: monthlyDaysOfWeek
-    enableYearlyRetention: enableYearlyRetention
-    yearlyRetentionYears: yearlyRetentionYears
-    yearlyMonthsOfYear: yearlyMonthsOfYear
-    yearlyWeeksOfMonth: yearlyWeeksOfMonth
-    yearlyDaysOfWeek: yearlyDaysOfWeek
-  }
-  dependsOn: [vaults[i]]
-}]
+// Backup policies are created by the AVM Recovery Services Vault module via `backupPolicies` parameter.
+// We pass a per-region array constructed above.
 
-module uais './modules/userAssignedIdentity.bicep' = [for (region, i) in regions: {
-  name: 'userAssignedIdentityModule-${region}'
-  scope: resourceGroup(rgNames[i])
+// Deploy a single User Assigned Identity (UAI) in the first region only.
+// The remediation flow only needs one UAI with subscription-level permissions.
+module uai 'br:mcr.microsoft.com/bicep/avm/res/managed-identity/user-assigned-identity:0.4.0' = {
+  name: 'userAssignedIdentityModule-${regions[0]}'
+  scope: resourceGroup(rgNames[0])
   params: {
-    identityName: uaiNames[i]
-    location: region
+    // AVM module expects `name` for the user-assigned identity
+    name: uaiNames[0]
+    location: regions[0]
+    // preserve tags shape from top-level `tags` param if desired
+    tags: tags
   }
-  dependsOn: [vaults[i]]
-}]
+  dependsOn: [vaults[0]]
+}
 
 // Assign RBAC role to UAI on each RSV RG using provided remediationRoleDefinitionId
 // Assign RBAC role to each UAI at subscription scope (one assignment per UAI)
-module rbacSub './modules/roleAssignmentSubscription.bicep' = [for (region, i) in regions: {
-  name: 'roleAssignmentSubModule-${region}'
+// Create a single subscription-scope role assignment for the single UAI.
+module rbacSub 'br:mcr.microsoft.com/bicep/avm/res/authorization/role-assignment/sub-scope:0.1.0' = {
+  name: 'roleAssignmentSubModule-${regions[0]}'
   params: {
-    principalId: uais[i].outputs.principalId
+    principalId: uai.outputs.principalId
+    // AVM parameter name is `roleDefinitionIdOrName`
+    roleDefinitionIdOrName: remediationRoleDefinitionId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: remediationRoleDefinitionId
   }
-  dependsOn: [uais[i]]
-}]
+  
+}
 
 // Export outputs as arrays for all regions
-output vaultIds array = [for (region, i) in regions: vaults[i].outputs.vaultId]
-output backupPolicyIds array = [for (region, i) in regions: policies[i].outputs.backupPolicyIds]
-output backupPolicyNames array = [for (region, i) in regions: policies[i].outputs.backupPolicyNames]
-output userAssignedIdentityIds array = [for (region, i) in regions: uais[i].outputs.identityResourceId]
-output userAssignedIdentityPrincipalIds array = [for (region, i) in regions: uais[i].outputs.principalId]
+output vaultIds array = [for (region, i) in regions: vaults[i].outputs.resourceId]
+// backup policy ids/names are created under each vault; derive them after build/deploy if needed
+// Export the single UAI as single-element arrays to avoid breaking consumers
+output userAssignedIdentityIds array = [uai.outputs.resourceId]
+output userAssignedIdentityPrincipalIds array = [uai.outputs.principalId]

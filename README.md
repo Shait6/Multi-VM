@@ -91,7 +91,7 @@ ASCII diagram (high level):
 ## 4 — Repository layout (concise)
 
 - `main.bicep` — subscription-scoped orchestration
-- `modules/` — Bicep modules (vault, backupPolicy, userAssignedIdentity, roleAssignment, assignCustomCentralBackupPolicy, backupAuditPolicy)
+- `modules/` — Bicep modules (assignCustomCentralBackupPolicy, backupAuditPolicy)
 - `policy-definitions/` — `customCentralVmBackup.rules.json` (rules) and `customCentralVmBackup.full.json` (full definition)
 - `scripts/` — PowerShell helpers:
   - `Deploy-BackupInfra.ps1` — builds and deploys `main.bicep`
@@ -170,10 +170,7 @@ Important: the `Start-BackupRemediation.ps1` script now waits for the vault reso
 
 **Repository layout**
 - `main.bicep` — Orchestrates subscription-scoped deployment: creates per-region resource groups (`rsv-rg-<region>`), Recovery Services Vaults (`rsv-<region>`), backup policy modules, UAIs, and RBAC.
-- `modules/recoveryVault.bicep` — Creates a Recovery Services Vault with chosen SKU and network settings.
-- `modules/backupPolicy.bicep` — Builds daily/weekly (or both) backup policies and outputs policy IDs and names.
-- `modules/userAssignedIdentity.bicep` — Creates per-region UAIs and exposes principal IDs.
-- `modules/roleAssignmentSubscription.bicep` — Assign Contributor (or configured role) to the UAI at subscription scope.
+> Note: this repository has been migrated to use Azure Verified Modules (AVM) for core infra (vaults, UAIs, role assignments and other resources). The only remaining local modules are for policy assignments and audit policies that operate at subscription/management group scope.
 - `modules/assignCustomCentralBackupPolicy.bicep` — Creates a subscription-scoped policy assignment of the custom DeployIfNotExists policy and passes the vault/policy ID into the policy parameters.
 - `modules/backupAuditPolicy.bicep` — Creates an audit-only policy to report unprotected VMs (non-enforcing).
 - `policy-definitions/customCentralVmBackup.rules.json` — Policy rules (preferred for `az policy definition create` to preserve expressions).

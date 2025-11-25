@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "backupScheduleRunTimes": { "value": [ "01:00" ] },
+    "dailyRetentionDays": { "value": 14 },
+    "weeklyRetentionDays": { "value": 30 },
+    "weeklyBackupDaysOfWeek": { "value": [ "Sunday", "Wednesday" ] },
+    "backupFrequency": { "value": "Daily" },
+    "backupTimeZone": { "value": "UTC" },
+    "instantRestoreRetentionDays": { "value": 2 },
+    "enableMonthlyRetention": { "value": false },
+    "monthlyRetentionMonths": { "value": 60 },
+    "monthlyWeeksOfMonth": { "value": [ "First" ] },
+    "monthlyDaysOfWeek": { "value": [ "Sunday" ] },
+    "enableYearlyRetention": { "value": false },
+    "yearlyRetentionYears": { "value": 10 },
+    "yearlyMonthsOfYear": { "value": [ "January", "February", "March" ] },
+    "yearlyWeeksOfMonth": { "value": [ "First" ] },
+    "yearlyDaysOfWeek": { "value": [ "Sunday" ] },
+    "publicNetworkAccess": { "value": "Enabled" },
+    "vaultSkuName": { "value": "RS0" },
+    "vaultSkuTier": { "value": "Standard" },
+    "remediationRoleDefinitionId": { "value": "b24988ac-6180-42a0-ab88-20f7382dd24c" },
+    "softDeleteSettings": { "value": { "enhancedSecurityState": "Enabled", "softDeleteRetentionPeriodInDays": 14, "softDeleteState": "Enabled" } },
+    "tags": { "value": { "Environment": "Non-Prod", "hidden-title": "This is visible in the resource name", "Role": "DeploymentValidation" } }
+  }
+}
