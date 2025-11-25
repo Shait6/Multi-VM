@@ -141,7 +141,44 @@ foreach ($r in $targetRegions) {
   $base      = "backup-policy-$r"
   if ($BackupFrequency -eq 'Weekly' -or $BackupFrequency -eq 'Both') { $policyName = "$base-weekly" } else { $policyName = "$base-daily" }
   $assignName = "enable-vm-backup-anyos-$r"
-  $uaiId = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
+  # Resolve User Assigned Identity resource id.
+  # Historically the UAI was named `uai-<region>` in resource group `rsv-rg-<region>`; newer deployments may use different naming.
+  $uaiIdGuess = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
+  $uaiId = $null
+
+  try {
+    # First, check the guessed id
+    $exists = az resource show --ids $uaiIdGuess -o json 2>$null | ConvertFrom-Json
+    if ($exists) { $uaiId = $uaiIdGuess }
+  } catch {}
+
+  if (-not $uaiId) {
+    Write-Host "UAI not found at guessed id. Searching for user-assigned identities in resource group: $vaultRg" -ForegroundColor Yellow
+    try {
+      $list = az identity list --resource-group $vaultRg -o json | ConvertFrom-Json
+    } catch {
+      $list = @()
+    }
+    if ($list -and $list.Count -gt 0) {
+      # Prefer an identity whose name contains the region token, otherwise take the first one
+      $match = $list | Where-Object { $_.name -like "*${r}*" } | Select-Object -First 1
+      if (-not $match) { $match = $list[0] }
+      if ($match) { $uaiId = $match.id }
+    }
+  }
+
+  if (-not $uaiId) {
+    Write-Host "Fallback: searching subscription for a user-assigned identity with region token '$r' or containing 'uai' in the name" -ForegroundColor Yellow
+    try {
+      $subList = az resource list --resource-type "Microsoft.ManagedIdentity/userAssignedIdentities" --query "[?contains(tolower(name),'uai') || contains(tolower(name),'$($r.ToLower())')]|[0]" -o json | ConvertFrom-Json
+      if ($subList -and $subList.id) { $uaiId = $subList.id }
+    } catch {}
+  }
+
+  if (-not $uaiId) {
+    Write-Warning "Unable to resolve a User Assigned Identity for region $r in resource group $vaultRg. Using guessed id: $uaiIdGuess (deployment may fail if identity not present)."
+    $uaiId = $uaiIdGuess
+  }
 
   Write-Host "Assigning custom ANY-OS policy $assignName (vault=$vaultName, policy=$policyName)"
   $customDefId = ''

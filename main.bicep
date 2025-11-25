@@ -166,10 +166,7 @@ param yearlyDaysOfWeek array
 @allowed([ 'Enabled', 'Disabled' ])
 @description('Public network access setting for vaults')
 param publicNetworkAccess string
-@description('Recovery Services Vault SKU name')
-param vaultSkuName string
-@description('Recovery Services Vault SKU tier')
-param vaultSkuTier string
+// Vault SKU params removed (not used) — keep Bicep minimal
 
 @description('Role Definition ID or GUID for remediation identity ( Contributor )')
 param remediationRoleDefinitionId string
@@ -209,11 +206,8 @@ module vaults 'br:mcr.microsoft.com/bicep/avm/res/recovery-services/vault:0.11.1
     }
     // Soft-delete settings (shape matches AVM softDeleteSettings)
     softDeleteSettings: softDeleteSettings
-    // Surface SKU info in tags so values are tracked and avoid unused-parameter warnings
-    tags: union(tags, {
-      vaultSkuName: vaultSkuName
-      vaultSkuTier: vaultSkuTier
-    })
+      // Pass tags through (empty object in parameters prevents tagging resources)
+      tags: tags
     // Create backup policies via AVM vault module
     backupPolicies: backupPoliciesPerRegion[i]
   }
