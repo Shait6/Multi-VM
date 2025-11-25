@@ -142,36 +142,44 @@ foreach ($r in $targetRegions) {
   if ($BackupFrequency -eq 'Weekly' -or $BackupFrequency -eq 'Both') { $policyName = "$base-weekly" } else { $policyName = "$base-daily" }
   $assignName = "enable-vm-backup-anyos-$r"
   # Resolve User Assigned Identity resource id.
-  # Historically the UAI was named `uai-<region>` in resource group `rsv-rg-<region>`; newer deployments may use different naming.
+  # First check the legacy guessed id (rsv-rg-<region>/uai-<region>) to preserve older behavior.
   $uaiIdGuess = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
   $uaiId = $null
 
-  try {
-    # First, check the guessed id
-    $exists = az resource show --ids $uaiIdGuess -o json 2>$null | ConvertFrom-Json
-    if ($exists) { $uaiId = $uaiIdGuess }
-  } catch {}
+  try { $exists = az resource show --ids $uaiIdGuess -o json 2>$null | ConvertFrom-Json; if ($exists) { $uaiId = $uaiIdGuess } } catch {}
 
-  if (-not $uaiId) {
-    Write-Host "UAI not found at guessed id. Searching for user-assigned identities in resource group: $vaultRg" -ForegroundColor Yellow
-    try {
-      $list = az identity list --resource-group $vaultRg -o json | ConvertFrom-Json
-    } catch {
-      $list = @()
-    }
-    if ($list -and $list.Count -gt 0) {
-      # Prefer an identity whose name contains the region token, otherwise take the first one
-      $match = $list | Where-Object { $_.name -like "*${r}*" } | Select-Object -First 1
-      if (-not $match) { $match = $list[0] }
-      if ($match) { $uaiId = $match.id }
-    }
+  # If not found, try to derive the actual RG and UAI names from repo parameters (matches naming in main.bicep)
+  if (-not $uaiId -and $repoJson -and $repoJson.parameters) {
+    $namePrefix = 'rsv'; $envTag = 'np'; $nameSep = '-'; $regionShortLen = 3; $nameMaxLength = 24
+    try { if ($repoJson.parameters.namePrefix -and $repoJson.parameters.namePrefix.value) { $namePrefix = $repoJson.parameters.namePrefix.value } } catch {}
+    try { if ($repoJson.parameters.envTag -and $repoJson.parameters.envTag.value) { $envTag = $repoJson.parameters.envTag.value } } catch {}
+    try { if ($repoJson.parameters.nameSep -and $repoJson.parameters.nameSep.value) { $nameSep = $repoJson.parameters.nameSep.value } } catch {}
+    try { if ($repoJson.parameters.regionShortLen -and $repoJson.parameters.regionShortLen.value) { $regionShortLen = [int]$repoJson.parameters.regionShortLen.value } } catch {}
+    try { if ($repoJson.parameters.nameMaxLength -and $repoJson.parameters.nameMaxLength.value) { $nameMaxLength = [int]$repoJson.parameters.nameMaxLength.value } } catch {}
+
+    $cleanRegion = ($r -replace ' ', '')
+    if ($cleanRegion.Length -lt $regionShortLen) { $regionCode = $cleanRegion.ToLower() } else { $regionCode = $cleanRegion.Substring(0, $regionShortLen).ToLower() }
+
+    $fullRgName = "${namePrefix}${nameSep}${envTag}${nameSep}${regionCode}"
+    if ($fullRgName.Length -le $nameMaxLength) { $resolvedRg = $fullRgName } else { $resolvedRg = $fullRgName.Substring(0, $nameMaxLength) }
+
+    $uaiName = "${namePrefix}${nameSep}uai${nameSep}${regionCode}"
+    if ($uaiName.Length -gt $nameMaxLength) { $uaiName = $uaiName.Substring(0, $nameMaxLength) }
+
+    $computedGuess = "/subscriptions/$SubscriptionId/resourceGroups/$resolvedRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$uaiName"
+    try { $exists = az resource show --ids $computedGuess -o json 2>$null | ConvertFrom-Json; if ($exists) { $uaiId = $computedGuess } } catch {}
+    if ($uaiId) { $vaultRg = $resolvedRg }
   }
 
+  # Last-resort: search subscription for a matching UAI resource by name (avoid complex jmespath tolower usage)
   if (-not $uaiId) {
-    Write-Host "Fallback: searching subscription for a user-assigned identity with region token '$r' or containing 'uai' in the name" -ForegroundColor Yellow
+    Write-Host "Fallback: searching subscription for a user-assigned identity containing region token '$r' or 'uai' in the name" -ForegroundColor Yellow
     try {
-      $subList = az resource list --resource-type "Microsoft.ManagedIdentity/userAssignedIdentities" --query "[?contains(tolower(name),'uai') || contains(tolower(name),'$($r.ToLower())')]|[0]" -o json | ConvertFrom-Json
-      if ($subList -and $subList.id) { $uaiId = $subList.id }
+      $subList = az resource list --resource-type "Microsoft.ManagedIdentity/userAssignedIdentities" -o json 2>$null | ConvertFrom-Json
+      if ($subList -and $subList.Count -gt 0) {
+        $match = $subList | Where-Object { ($_.name -match $r) -or ($_.name -match 'uai') } | Select-Object -First 1
+        if ($match) { $uaiId = $match.id }
+      }
     } catch {}
   }
 
