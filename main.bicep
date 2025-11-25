@@ -61,15 +61,6 @@ param vaultSkuTier string = 'Standard'
 
 @description('Role Definition ID or GUID for remediation identity ( Contributor )')
 param remediationRoleDefinitionId string = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
-@description('Enable Backup soft-delete (protects recovery points) for created Recovery Services Vaults')
-param enableSoftDelete bool = false
-@description('Backup storage redundancy for created Recovery Services Vaults (LocallyRedundant | GeoRedundant | ZoneRedundant)')
-@allowed([
-  'LocallyRedundant'
-  'GeoRedundant'
-  'ZoneRedundant'
-])
-param backupStorageRedundancy string = 'GeoRedundant'
 
 // Create resource groups in each region
 resource rgs 'Microsoft.Resources/resourceGroups@2021-04-01' = [for (region, i) in regions: {
@@ -87,8 +78,6 @@ module vaults './modules/recoveryVault.bicep' = [for (region, i) in regions: {
     publicNetworkAccess: publicNetworkAccess
     skuName: vaultSkuName
     skuTier: vaultSkuTier
-    enableSoftDelete: enableSoftDelete
-    backupStorageRedundancy: backupStorageRedundancy
   }
   dependsOn: [rgs[i]]
 }]

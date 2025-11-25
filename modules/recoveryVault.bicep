@@ -11,15 +11,6 @@ param skuTier string = 'Standard'
   'Disabled'
 ])
 param publicNetworkAccess string = 'Enabled'
-@description('Enable Backup soft-delete (protects recovery points)')
-param enableSoftDelete bool = false
-@description('Backup storage redundancy for the vault (LocallyRedundant | GeoRedundant | ZoneRedundant). GeoRedundant recommended for production')
-@allowed([
-  'LocallyRedundant'
-  'GeoRedundant'
-  'ZoneRedundant'
-])
-param backupStorageRedundancy string = 'GeoRedundant'
  
 
 resource recoveryServicesVault 'Microsoft.RecoveryServices/vaults@2023-04-01' = {
@@ -30,21 +21,16 @@ resource recoveryServicesVault 'Microsoft.RecoveryServices/vaults@2023-04-01' = 
     tier: skuTier
     
   }
-  properties: union({
+  properties: {
     publicNetworkAccess: publicNetworkAccess
     restoreSettings: {
       crossSubscriptionRestoreSettings: {
         crossSubscriptionRestoreState: 'Enabled'
       }
     }
-  }, enableSoftDelete ? { softDeleteFeatureState: 'Enabled' } : {}, 
-  // Use the provider-supported property for Recovery Services Vault backup storage replication.
-  // 'storageModelType' is the property used by the Recovery Services Vault resource to indicate
-  // redundancy type (for example: 'GeoRedundant' or 'LocallyRedundant').
-  { storageModelType: backupStorageRedundancy })
+  }
 }
+// This module does not configure backup storage replication. Recommended replication for production is GRS.
 
 output vaultId string = recoveryServicesVault.id
 output vaultName string = recoveryServicesVault.name
-output softDeleteEnabled bool = enableSoftDelete
-output backupStorageRedundancy string = backupStorageRedundancy
