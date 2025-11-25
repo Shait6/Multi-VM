@@ -19,8 +19,6 @@
     "yearlyWeeksOfMonth": { "value": [ "First" ] },
     "yearlyDaysOfWeek": { "value": [ "Sunday" ] },
     "publicNetworkAccess": { "value": "Enabled" },
-    "vaultSkuName": { "value": "RS0" },
-    "vaultSkuTier": { "value": "Standard" },
     "remediationRoleDefinitionId": { "value": "b24988ac-6180-42a0-ab88-20f7382dd24c" },
     "softDeleteSettings": { "value": { "enhancedSecurityState": "Enabled", "softDeleteRetentionPeriodInDays": 14, "softDeleteState": "Enabled" } },
     "tags": { "value": { } }
