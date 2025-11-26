@@ -12,7 +12,7 @@ var regions = [
 @description('Name prefix for resources (short)')
 param namePrefix string = 'rsv'
 @description('Environment tag (short, e.g., prod, np)')
-param envTag string = 'np'
+param envTag string = 'prod'
 @description('Separator used between name segments')
 param nameSep string = '-'
 @description('Maximum length for generated names (will be truncated)')
@@ -202,7 +202,7 @@ module vaults 'br:mcr.microsoft.com/bicep/avm/res/recovery-services/vault:0.11.1
     backupConfig: {
       storageModelType: 'GeoRedundant'
       // softDeleteFeatureState is an AVM backupConfig property; keep Enabled to protect backups
-      softDeleteFeatureState: 'Enabled'
+      softDeleteFeatureState: 'Disabled'
     }
     // Soft-delete settings (shape matches AVM softDeleteSettings)
     softDeleteSettings: softDeleteSettings
