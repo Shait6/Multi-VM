@@ -24,10 +24,29 @@ param regionShortLen int = 3
 var regionCodes = [for r in regions: toLower(substring(replace(r, ' ', ''), 0, regionShortLen))]
 
 // Resource group, vault, UAI and policy name generation (keeps names compact and deterministic)
-var rgNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}${envTag}${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}${envTag}${nameSep}${regionCodes[i]}')))]
-var vaultNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}vault${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}vault${nameSep}${regionCodes[i]}')))]
-var uaiNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}uai${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}uai${nameSep}${regionCodes[i]}')))]
-var backupPolicyNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}bkp${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}bkp${nameSep}${regionCodes[i]}')))]
+@description('Resource group names per region. Provide an array matching `regions` order to override generated names (default: empty -> generated).')
+param rgNames array = []
+
+@description('Vault names per region. Provide an array matching `regions` order to override generated names (default: empty -> generated).')
+param vaultNames array = []
+
+@description('User Assigned Identity names per region. Provide an array matching `regions` order to override generated names (default: empty -> generated).')
+param uaiNames array = []
+
+@description('Backup policy name prefixes per region (base name without -daily/-weekly). Provide an array matching `regions` order to override generated names (default: empty -> generated).')
+param backupPolicyNames array = []
+
+// Compute generated defaults (used when override arrays are not provided)
+var genRgNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}${envTag}${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}${envTag}${nameSep}${regionCodes[i]}')))]
+var genVaultNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}vault${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}vault${nameSep}${regionCodes[i]}')))]
+var genUaiNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}uai${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}uai${nameSep}${regionCodes[i]}')))]
+var genBackupPolicyNames = [for (region, i) in regions: substring('${namePrefix}${nameSep}bkp${nameSep}${regionCodes[i]}', 0, min(nameMaxLength, length('${namePrefix}${nameSep}bkp${nameSep}${regionCodes[i]}')))]
+
+// Final arrays: prefer provided overrides when they match expected length, else fall back to generated defaults
+var rgNamesFinal = length(rgNames) == length(regions) ? rgNames : genRgNames
+var vaultNamesFinal = length(vaultNames) == length(regions) ? vaultNames : genVaultNames
+var uaiNamesFinal = length(uaiNames) == length(regions) ? uaiNames : genUaiNames
+var backupPolicyNamesFinal = length(backupPolicyNames) == length(regions) ? backupPolicyNames : genBackupPolicyNames
 
 // Derived helper vars for backup policy construction (mirrors logic in modules/backupPolicy.bicep)
 var isoRunTimes = [for t in backupScheduleRunTimes: (contains(t, 'T') ? t : '2016-09-21T${t}:00Z')]
@@ -81,7 +100,7 @@ var retentionPolicyWeekly = union({
 var backupPoliciesPerRegion = [for (region, i) in regions: concat(
   (backupFrequency == 'Daily' || backupFrequency == 'Both') ? [
     {
-      name: '${backupPolicyNames[i]}-daily'
+      name: '${backupPolicyNamesFinal[i]}-daily'
       properties: {
         backupManagementType: 'AzureIaasVM'
         policyType: 'V1'
@@ -107,7 +126,7 @@ var backupPoliciesPerRegion = [for (region, i) in regions: concat(
   ] : [],
   (backupFrequency == 'Weekly' || backupFrequency == 'Both') ? [
     {
-      name: '${backupPolicyNames[i]}-weekly'
+      name: '${backupPolicyNamesFinal[i]}-weekly'
       properties: {
         backupManagementType: 'AzureIaasVM'
         policyType: 'V1'
@@ -182,7 +201,7 @@ module rgs 'br:mcr.microsoft.com/bicep/avm/res/resources/resource-group:0.4.0' =
   name: 'resourceGroupModule-${region}'
   scope: subscription()
   params: {
-    name: rgNames[i]
+    name: rgNamesFinal[i]
     location: region
     tags: tags
   }
@@ -194,7 +213,7 @@ module vaults 'br:mcr.microsoft.com/bicep/avm/res/recovery-services/vault:0.11.1
   scope: resourceGroup(rgNames[i])
   params: {
     // AVM required parameter
-    name: vaultNames[i]
+    name: vaultNamesFinal[i]
     // Optional but explicit: location and public network access
     location: region
     publicNetworkAccess: publicNetworkAccess
@@ -225,7 +244,7 @@ module uai 'br:mcr.microsoft.com/bicep/avm/res/managed-identity/user-assigned-id
   scope: resourceGroup(rgNames[i])
   params: {
     // AVM module expects `name` for the user-assigned identity
-    name: uaiNames[i]
+    name: uaiNamesFinal[i]
     location: regions[i]
     // preserve tags shape from top-level `tags` param if desired
     tags: tags

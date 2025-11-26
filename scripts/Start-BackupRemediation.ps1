@@ -135,11 +135,39 @@ try {
 $targetRegions = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { $Regions.Split(',') | ForEach-Object { $_.Trim() } }
 Write-Host "Regions: $($targetRegions -join ', ') | Tag=${TagName}=${TagValue} | Freq=${BackupFrequency}"
 
+# Load repository parameters file (if present) so we can honor explicit name arrays
+$repoJson = $null
+$repoParamsPath = Join-Path -Path (Get-Location) -ChildPath 'parameters\main.parameters.json'
+if (Test-Path $repoParamsPath) {
+  try { $repoJson = Get-Content -Raw -Path $repoParamsPath | ConvertFrom-Json } catch { $repoJson = $null }
+}
+
 foreach ($r in $targetRegions) {
   $vaultName = "rsv-$r"
   $vaultRg   = "rsv-rg-$r"
   $base      = "backup-policy-$r"
   if ($BackupFrequency -eq 'Weekly' -or $BackupFrequency -eq 'Both') { $policyName = "$base-weekly" } else { $policyName = "$base-daily" }
+
+  # If repo parameters provide explicit name arrays, prefer those (positional by region order)
+  $idx = $targetRegions.IndexOf($r)
+  if ($repoJson -and $repoJson.parameters) {
+    try {
+      if ($repoJson.parameters.vaultNames -and $repoJson.parameters.vaultNames.value -and $idx -ge 0 -and $idx -lt $repoJson.parameters.vaultNames.value.Count) {
+        $vaultName = $repoJson.parameters.vaultNames.value[$idx]
+      }
+    } catch {}
+    try {
+      if ($repoJson.parameters.rgNames -and $repoJson.parameters.rgNames.value -and $idx -ge 0 -and $idx -lt $repoJson.parameters.rgNames.value.Count) {
+        $vaultRg = $repoJson.parameters.rgNames.value[$idx]
+      }
+    } catch {}
+    try {
+      if ($repoJson.parameters.backupPolicyNames -and $repoJson.parameters.backupPolicyNames.value -and $idx -ge 0 -and $idx -lt $repoJson.parameters.backupPolicyNames.value.Count) {
+        $bp = $repoJson.parameters.backupPolicyNames.value[$idx]
+        if ($BackupFrequency -eq 'Weekly' -or $BackupFrequency -eq 'Both') { $policyName = "$bp-weekly" } else { $policyName = "$bp-daily" }
+      }
+    } catch {}
+  }
   $assignName = "enable-vm-backup-anyos-$r"
   # Resolve User Assigned Identity resource id.
   # First check the legacy guessed id (rsv-rg-<region>/uai-<region>) to preserve older behavior.
@@ -150,25 +178,38 @@ foreach ($r in $targetRegions) {
 
   # If not found, try to derive the actual RG and UAI names from repo parameters (matches naming in main.bicep)
   if (-not $uaiId -and $repoJson -and $repoJson.parameters) {
-    $namePrefix = 'rsv'; $envTag = 'np'; $nameSep = '-'; $regionShortLen = 3; $nameMaxLength = 24
-    try { if ($repoJson.parameters.namePrefix -and $repoJson.parameters.namePrefix.value) { $namePrefix = $repoJson.parameters.namePrefix.value } } catch {}
-    try { if ($repoJson.parameters.envTag -and $repoJson.parameters.envTag.value) { $envTag = $repoJson.parameters.envTag.value } } catch {}
-    try { if ($repoJson.parameters.nameSep -and $repoJson.parameters.nameSep.value) { $nameSep = $repoJson.parameters.nameSep.value } } catch {}
-    try { if ($repoJson.parameters.regionShortLen -and $repoJson.parameters.regionShortLen.value) { $regionShortLen = [int]$repoJson.parameters.regionShortLen.value } } catch {}
-    try { if ($repoJson.parameters.nameMaxLength -and $repoJson.parameters.nameMaxLength.value) { $nameMaxLength = [int]$repoJson.parameters.nameMaxLength.value } } catch {}
+    # If the repo provided explicit uaiNames array, prefer it (positional)
+    try {
+      if ($repoJson.parameters.uaiNames -and $repoJson.parameters.uaiNames.value -and $idx -ge 0 -and $idx -lt $repoJson.parameters.uaiNames.value.Count) {
+        $uaiName = $repoJson.parameters.uaiNames.value[$idx]
+        $computedGuess = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$uaiName"
+        try { $exists = az resource show --ids $computedGuess -o json 2>$null | ConvertFrom-Json; if ($exists) { $uaiId = $computedGuess } } catch {}
+        if ($uaiId) { $vaultRg = $vaultRg }
+      }
+    } catch {}
 
-    $cleanRegion = ($r -replace ' ', '')
-    if ($cleanRegion.Length -lt $regionShortLen) { $regionCode = $cleanRegion.ToLower() } else { $regionCode = $cleanRegion.Substring(0, $regionShortLen).ToLower() }
+    # If that didn't work, fall back to legacy generation from namePrefix/envTag (previous behaviour)
+    if (-not $uaiId) {
+      $namePrefix = 'rsv'; $envTag = 'np'; $nameSep = '-'; $regionShortLen = 3; $nameMaxLength = 24
+      try { if ($repoJson.parameters.namePrefix -and $repoJson.parameters.namePrefix.value) { $namePrefix = $repoJson.parameters.namePrefix.value } } catch {}
+      try { if ($repoJson.parameters.envTag -and $repoJson.parameters.envTag.value) { $envTag = $repoJson.parameters.envTag.value } } catch {}
+      try { if ($repoJson.parameters.nameSep -and $repoJson.parameters.nameSep.value) { $nameSep = $repoJson.parameters.nameSep.value } } catch {}
+      try { if ($repoJson.parameters.regionShortLen -and $repoJson.parameters.regionShortLen.value) { $regionShortLen = [int]$repoJson.parameters.regionShortLen.value } } catch {}
+      try { if ($repoJson.parameters.nameMaxLength -and $repoJson.parameters.nameMaxLength.value) { $nameMaxLength = [int]$repoJson.parameters.nameMaxLength.value } } catch {}
 
-    $fullRgName = "${namePrefix}${nameSep}${envTag}${nameSep}${regionCode}"
-    if ($fullRgName.Length -le $nameMaxLength) { $resolvedRg = $fullRgName } else { $resolvedRg = $fullRgName.Substring(0, $nameMaxLength) }
+      $cleanRegion = ($r -replace ' ', '')
+      if ($cleanRegion.Length -lt $regionShortLen) { $regionCode = $cleanRegion.ToLower() } else { $regionCode = $cleanRegion.Substring(0, $regionShortLen).ToLower() }
 
-    $uaiName = "${namePrefix}${nameSep}uai${nameSep}${regionCode}"
-    if ($uaiName.Length -gt $nameMaxLength) { $uaiName = $uaiName.Substring(0, $nameMaxLength) }
+      $fullRgName = "${namePrefix}${nameSep}${envTag}${nameSep}${regionCode}"
+      if ($fullRgName.Length -le $nameMaxLength) { $resolvedRg = $fullRgName } else { $resolvedRg = $fullRgName.Substring(0, $nameMaxLength) }
 
-    $computedGuess = "/subscriptions/$SubscriptionId/resourceGroups/$resolvedRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$uaiName"
-    try { $exists = az resource show --ids $computedGuess -o json 2>$null | ConvertFrom-Json; if ($exists) { $uaiId = $computedGuess } } catch {}
-    if ($uaiId) { $vaultRg = $resolvedRg }
+      $uaiName = "${namePrefix}${nameSep}uai${nameSep}${regionCode}"
+      if ($uaiName.Length -gt $nameMaxLength) { $uaiName = $uaiName.Substring(0, $nameMaxLength) }
+
+      $computedGuess = "/subscriptions/$SubscriptionId/resourceGroups/$resolvedRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$uaiName"
+      try { $exists = az resource show --ids $computedGuess -o json 2>$null | ConvertFrom-Json; if ($exists) { $uaiId = $computedGuess } } catch {}
+      if ($uaiId) { $vaultRg = $resolvedRg }
+    }
   }
 
   # Last-resort: search subscription for a matching UAI resource by name (avoid complex jmespath tolower usage)

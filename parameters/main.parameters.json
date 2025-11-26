@@ -19,6 +19,10 @@
     "yearlyWeeksOfMonth": { "value": [ "First" ] },
     "yearlyDaysOfWeek": { "value": [ "Sunday" ] },
     "publicNetworkAccess": { "value": "Enabled" },
+    "rgNames": { "value": [ "rsv-prod-wes", "rsv-prod-nor", "rsv-prod-swe", "rsv-prod-ger" ] },
+    "vaultNames": { "value": [ "rsv-vault-wes", "rsv-vault-nor", "rsv-vault-swe", "rsv-vault-ger" ] },
+    "uaiNames": { "value": [ "rsv-uai-wes", "rsv-uai-nor", "rsv-uai-swe", "rsv-uai-ger" ] },
+    "backupPolicyNames": { "value": [ "rsv-bkp-wes", "rsv-bkp-nor", "rsv-bkp-swe", "rsv-bkp-ger" ] },
     "remediationRoleDefinitionId": { "value": "b24988ac-6180-42a0-ab88-20f7382dd24c" },
     "softDeleteSettings": { "value": { "enhancedSecurityState": "Enabled", "softDeleteRetentionPeriodInDays": 14, "softDeleteState": "Enabled" } },
     "tags": { "value": { } }
