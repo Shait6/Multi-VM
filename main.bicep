@@ -108,31 +108,34 @@ module policies './modules/backupPolicy.bicep' = [for (region, i) in regions: {
   dependsOn: [vaults[i]]
 }]
 
-module uais './modules/userAssignedIdentity.bicep' = [for (region, i) in regions: {
-  name: 'userAssignedIdentityModule-${region}'
-  scope: resourceGroup(rgNames[i])
+// Create a single User Assigned Identity in the first resource group and reuse it across regions
+module uaiSingle './modules/userAssignedIdentity.bicep' = {
+  name: 'userAssignedIdentityModule-single'
+  scope: resourceGroup(rgNames[0])
   params: {
-    identityName: uaiNames[i]
-    location: region
+    identityName: uaiNames[0]
+    location: regions[0]
   }
-  dependsOn: [vaults[i]]
-}]
+  dependsOn: [vaults[0]]
+}
 
 // Assign RBAC role to UAI on each RSV RG using provided remediationRoleDefinitionId
 // Assign RBAC role to each UAI at subscription scope (one assignment per UAI)
-module rbacSub './modules/roleAssignmentSubscription.bicep' = [for (region, i) in regions: {
-  name: 'roleAssignmentSubModule-${region}'
+// Single subscription role assignment for the reused UAI
+module rbacSub './modules/roleAssignmentSubscription.bicep' = {
+  name: 'roleAssignmentSubModule-single'
   params: {
-    principalId: uais[i].outputs.principalId
+    principalId: uaiSingle.outputs.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: remediationRoleDefinitionId
   }
-  dependsOn: [uais[i]]
-}]
+  
+}
 
 // Export outputs as arrays for all regions
 output vaultIds array = [for (region, i) in regions: vaults[i].outputs.vaultId]
 output backupPolicyIds array = [for (region, i) in regions: policies[i].outputs.backupPolicyIds]
 output backupPolicyNames array = [for (region, i) in regions: policies[i].outputs.backupPolicyNames]
-output userAssignedIdentityIds array = [for (region, i) in regions: uais[i].outputs.identityResourceId]
-output userAssignedIdentityPrincipalIds array = [for (region, i) in regions: uais[i].outputs.principalId]
+// Keep output shape as arrays for compatibility: repeat the single UAI id/principal for each region
+output userAssignedIdentityIds array = [for (region, i) in regions: uaiSingle.outputs.identityResourceId]
+output userAssignedIdentityPrincipalIds array = [for (region, i) in regions: uaiSingle.outputs.principalId]
