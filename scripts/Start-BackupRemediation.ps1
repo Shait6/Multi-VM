@@ -135,57 +135,42 @@ try {
 $targetRegions = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { $Regions.Split(',') | ForEach-Object { $_.Trim() } }
 Write-Host "Regions: $($targetRegions -join ', ') | Tag=${TagName}=${TagValue} | Freq=${BackupFrequency}"
 
+# Resolve the single shared UAI once from the infra deployment outputs and fail fast if not present.
+Write-Host "Resolving shared User Assigned Identity (UAI) from latest infra deployment outputs..."
+$sharedUaiId = $null
+try {
+  $latestJson = az deployment sub list --query "[?starts_with(name, 'multi-region-backup')]|[0]" -o json 2>$null
+  if ($latestJson) {
+    $latest = $latestJson | ConvertFrom-Json
+    $deployName = $latest.name
+    Write-Host "Inspecting deployment: $deployName"
+    $outsJson = az deployment sub show --name $deployName --query properties.outputs.userAssignedIdentityIds.value -o json 2>$null
+    if (-not $outsJson -or $outsJson -eq 'null') {
+      # try alternative key
+      $outsJson = az deployment sub show --name $deployName --query properties.outputs.userAssignedIdentityId.value -o json 2>$null
+    }
+    if ($outsJson -and $outsJson -ne 'null') {
+      $outs = $outsJson | ConvertFrom-Json
+      if ($outs -is [System.Array] -and $outs.Count -gt 0) { $sharedUaiId = $outs[0] }
+      elseif ($outs -is [string] -and $outs) { $sharedUaiId = $outs }
+    }
+  }
+} catch {
+  Write-Warning "Failed to read infra deployment outputs: $($_.Exception.Message)"
+}
+if (-not $sharedUaiId) {
+  Write-Error "Shared UAI not found in infra deployment outputs. Re-run .\scripts\Deploy-BackupInfra.ps1 and ensure the deployment completes successfully. Exiting."; exit 1
+}
+try { $check = az resource show --ids $sharedUaiId -o json 2>$null | ConvertFrom-Json } catch { $check = $null }
+if (-not $check) { Write-Error "Resolved UAI id '$sharedUaiId' does not exist. Re-run infra deployment. Exiting."; exit 1 }
+
 foreach ($r in $targetRegions) {
   $vaultName = "rsv-$r"
   $vaultRg   = "rsv-rg-$r"
   $base      = "backup-policy-$r"
   if ($BackupFrequency -eq 'Weekly' -or $BackupFrequency -eq 'Both') { $policyName = "$base-weekly" } else { $policyName = "$base-daily" }
   $assignName = "enable-vm-backup-anyos-$r"
-  $uaiId = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
-
-  # If the per-region UAI doesn't exist (we moved to a shared single UAI), attempt to resolve
-  # the shared UAI from the latest subscription deployment outputs (userAssignedIdentityIds).
-  try { $u = az resource show --ids $uaiId -o json 2>$null | ConvertFrom-Json } catch { $u = $null }
-  if (-not $u) {
-    Write-Warning "Per-region UAI not found at $uaiId. Attempting to resolve shared UAI from recent subscription deployment outputs..."
-    try {
-      $latestJson = az deployment sub list --query "[?starts_with(name, 'multi-region-backup')]|[0]" -o json 2>$null
-      if (-not $latestJson) { Write-Warning "No recent 'multi-region-backup' subscription deployment found." }
-      else {
-        $latest = $latestJson | ConvertFrom-Json
-        $deployName = $latest.name
-        Write-Host "Inspecting deployment: $deployName"
-
-        # Try a list of plausible output keys that may contain the UAI resource id(s)
-        $candidateKeys = @('userAssignedIdentityIds','userAssignedIdentityResourceIds','userAssignedIdentityResourceId','userAssignedIdentityId','userAssignedIdentity')
-        $candidateUai = $null
-        foreach ($k in $candidateKeys) {
-          try {
-            $q = "properties.outputs.$k.value"
-            $outsJson = az deployment sub show --name $deployName --query $q -o json 2>$null
-            if ($outsJson -and $outsJson -ne 'null') {
-              $outs = $outsJson | ConvertFrom-Json
-              if ($outs -is [System.Array] -and $outs.Count -gt 0) { $candidateUai = $outs[0]; break }
-              elseif ($outs -is [string] -and $outs) { $candidateUai = $outs; break }
-            }
-          } catch { }
-        }
-
-        if ($candidateUai) {
-          Write-Host "Resolved candidate shared UAI -> $candidateUai"
-          try { $u = az resource show --ids $candidateUai -o json 2>$null | ConvertFrom-Json } catch { $u = $null }
-          if ($u) { $uaiId = $candidateUai; Write-Host "Using shared UAI id: $uaiId" }
-          else { Write-Warning "Candidate shared UAI found but resource not present: $candidateUai" }
-        } else {
-          Write-Warning "No suitable userAssignedIdentity output found in deployment $deployName"
-        }
-      }
-    } catch {
-      Write-Warning "Failed to resolve shared UAI from deployment outputs: $($_.Exception.Message)"
-    }
-  }
-
-  Write-Host "Assigning custom ANY-OS policy $assignName (vault=$vaultName, policy=$policyName)"
+  $uaiId = $sharedUaiId
   $customDefId = ''
   try { $customDefId = az policy definition show -n $CustomPolicyDefinitionName --query id -o tsv } catch { Write-Warning "Failed to resolve custom policy definition $($CustomPolicyDefinitionName): $($_.Exception.Message)" }
   if (-not $customDefId) { Write-Warning "Skipping region $r (custom policy definition not found)"; continue }
