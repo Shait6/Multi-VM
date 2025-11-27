@@ -76,7 +76,7 @@ try {
         Write-Host "Resource group already exists: $rgName"
       }
     } catch {
-      Write-Warning "Failed to ensure resource group $rgName: $($_.Exception.Message)"
+      Write-Warning "Failed to ensure resource group $($rgName): $($_.Exception.Message)"
     }
   }
 } catch {
