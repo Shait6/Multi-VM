@@ -24,7 +24,7 @@
     "uaiNames": { "value": [ "rsv-uai-wes", "rsv-uai-nor", "rsv-uai-swe", "rsv-uai-ger" ] },
     "backupPolicyNames": { "value": [ "rsv-bkp-wes", "rsv-bkp-nor", "rsv-bkp-swe", "rsv-bkp-ger" ] },
     "remediationRoleDefinitionId": { "value": "b24988ac-6180-42a0-ab88-20f7382dd24c" },
-    "softDeleteSettings": { "value": { "enhancedSecurityState": "Enabled", "softDeleteRetentionPeriodInDays": 14, "softDeleteState": "Enabled" } },
+    "softDeleteSettings": { "value": { "enhancedSecurityState": "Enabled", "softDeleteRetentionPeriodInDays": 14, "softDeleteState": "Disabled" } },
     "tags": { "value": { } }
   }
 }

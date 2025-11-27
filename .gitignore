@@ -8,6 +8,12 @@
 /*-whatif.json
 /bicep-build/*.diagnostics.json
 
-# Optional: ignore local compiled templates (if you prefer to keep compiled artifacts out)
-# Uncomment if you don't want compiled artifacts committed
-# /bicep-build/*.json
+# Ignore local compiled templates and other build outputs
+/bicep-build/*.json
+
+# Ignore top-level generated templates and parameter files
+/main.json
+/main-params.json
+
+# Ignore build log
+/bicep-build-verbose.log

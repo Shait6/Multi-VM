@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "11215006254766159176"
+      "templateHash": "18000403434345901762"
     }
   },
   "parameters": {
@@ -18,7 +18,7 @@
     },
     "envTag": {
       "type": "string",
-      "defaultValue": "np",
+      "defaultValue": "prod",
       "metadata": {
         "description": "Environment tag (short, e.g., prod, np)"
       }
@@ -44,18 +44,42 @@
         "description": "Number of characters to take from region name to form a region code"
       }
     },
+    "rgNames": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Resource group names per region. Provide an array matching `regions` order to override generated names (default: empty -> generated)."
+      }
+    },
+    "vaultNames": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Vault names per region. Provide an array matching `regions` order to override generated names (default: empty -> generated)."
+      }
+    },
+    "uaiNames": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "User Assigned Identity names per region. Provide an array matching `regions` order to override generated names (default: empty -> generated)."
+      }
+    },
+    "backupPolicyNames": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Backup policy name prefixes per region (base name without -daily/-weekly). Provide an array matching `regions` order to override generated names (default: empty -> generated)."
+      }
+    },
     "backupScheduleRunTimes": {
       "type": "array",
-      "defaultValue": [
-        "01:00"
-      ],
       "metadata": {
         "description": "Backup schedule run times (UTC HH:mm) applied to all region policies"
       }
     },
     "dailyRetentionDays": {
       "type": "int",
-      "defaultValue": 14,
       "minValue": 7,
       "metadata": {
         "description": "Daily retention in days (>=7)"
@@ -63,7 +87,6 @@
     },
     "weeklyRetentionDays": {
       "type": "int",
-      "defaultValue": 30,
       "minValue": 7,
       "metadata": {
         "description": "Weekly retention in days (>=7; converted to weeks internally)"
@@ -71,17 +94,12 @@
     },
     "weeklyBackupDaysOfWeek": {
       "type": "array",
-      "defaultValue": [
-        "Sunday",
-        "Wednesday"
-      ],
       "metadata": {
         "description": "Days of week for weekly backups"
       }
     },
     "backupFrequency": {
       "type": "string",
-      "defaultValue": "Daily",
       "allowedValues": [
         "Daily",
         "Weekly",
@@ -93,96 +111,72 @@
     },
     "backupTimeZone": {
       "type": "string",
-      "defaultValue": "UTC",
       "metadata": {
         "description": "Backup schedule timezone (e.g., UTC)"
       }
     },
     "instantRestoreRetentionDays": {
       "type": "int",
-      "defaultValue": 2,
       "metadata": {
         "description": "Instant Restore snapshot retention in days"
       }
     },
     "enableMonthlyRetention": {
       "type": "bool",
-      "defaultValue": false,
       "metadata": {
         "description": "Enable additional monthly retention tier (for weekly policy)"
       }
     },
     "monthlyRetentionMonths": {
       "type": "int",
-      "defaultValue": 60,
       "metadata": {
         "description": "Monthly retention duration in months"
       }
     },
     "monthlyWeeksOfMonth": {
       "type": "array",
-      "defaultValue": [
-        "First"
-      ],
       "metadata": {
         "description": "Monthly retention weeks of the month"
       }
     },
     "monthlyDaysOfWeek": {
       "type": "array",
-      "defaultValue": [
-        "Sunday"
-      ],
       "metadata": {
         "description": "Monthly retention days of the week"
       }
     },
     "enableYearlyRetention": {
       "type": "bool",
-      "defaultValue": false,
       "metadata": {
         "description": "Enable additional yearly retention tier (for weekly policy)"
       }
     },
     "yearlyRetentionYears": {
       "type": "int",
-      "defaultValue": 10,
       "metadata": {
         "description": "Yearly retention duration in years"
       }
     },
     "yearlyMonthsOfYear": {
       "type": "array",
-      "defaultValue": [
-        "January",
-        "February",
-        "March"
-      ],
       "metadata": {
         "description": "Yearly retention months of year"
       }
     },
     "yearlyWeeksOfMonth": {
       "type": "array",
-      "defaultValue": [
-        "First"
-      ],
       "metadata": {
         "description": "Yearly retention weeks of the month"
       }
     },
     "yearlyDaysOfWeek": {
       "type": "array",
-      "defaultValue": [
-        "Sunday"
-      ],
       "metadata": {
         "description": "Yearly retention days of the week"
       }
     },
     "publicNetworkAccess": {
       "type": "string",
-      "defaultValue": "Enabled",
       "allowedValues": [
         "Enabled",
         "Disabled"
@@ -191,42 +185,17 @@
         "description": "Public network access setting for vaults"
       }
     },
-    "vaultSkuName": {
-      "type": "string",
-      "defaultValue": "RS0",
-      "metadata": {
-        "description": "Recovery Services Vault SKU name"
-      }
-    },
-    "vaultSkuTier": {
-      "type": "string",
-      "defaultValue": "Standard",
-      "metadata": {
-        "description": "Recovery Services Vault SKU tier"
-      }
-    },
     "remediationRoleDefinitionId": {
       "type": "string",
-      "defaultValue": "b24988ac-6180-42a0-ab88-20f7382dd24c",
       "metadata": {
         "description": "Role Definition ID or GUID for remediation identity ( Contributor )"
       }
     },
     "softDeleteSettings": {
-      "type": "object",
-      "defaultValue": {
-        "enhancedSecurityState": "Enabled",
-        "softDeleteRetentionPeriodInDays": 14,
-        "softDeleteState": "Enabled"
-      }
+      "type": "object"
     },
     "tags": {
-      "type": "object",
-      "defaultValue": {
-        "Environment": "Non-Prod",
-        "hidden-title": "This is visible in the resource name",
-        "Role": "DeploymentValidation"
-      }
+      "type": "object"
     }
   },
   "variables": {
@@ -237,24 +206,24 @@
         "input": "[toLower(substring(replace(variables('regions')[copyIndex('regionCodes')], ' ', ''), 0, parameters('regionShortLen')))]"
       },
       {
-        "name": "rgNames",
+        "name": "genRgNames",
         "count": "[length(variables('regions'))]",
-        "input": "[substring(format('{0}{1}{2}{3}{4}', parameters('namePrefix'), parameters('nameSep'), parameters('envTag'), parameters('nameSep'), variables('regionCodes')[copyIndex('rgNames')]), 0, parameters('nameMaxLength'))]"
+        "input": "[substring(format('{0}{1}{2}{3}{4}', parameters('namePrefix'), parameters('nameSep'), parameters('envTag'), parameters('nameSep'), variables('regionCodes')[copyIndex('genRgNames')]), 0, min(parameters('nameMaxLength'), length(format('{0}{1}{2}{3}{4}', parameters('namePrefix'), parameters('nameSep'), parameters('envTag'), parameters('nameSep'), variables('regionCodes')[copyIndex('genRgNames')]))))]"
       },
       {
-        "name": "vaultNames",
+        "name": "genVaultNames",
         "count": "[length(variables('regions'))]",
-        "input": "[substring(format('{0}{1}vault{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('vaultNames')]), 0, parameters('nameMaxLength'))]"
+        "input": "[substring(format('{0}{1}vault{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('genVaultNames')]), 0, min(parameters('nameMaxLength'), length(format('{0}{1}vault{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('genVaultNames')]))))]"
       },
       {
-        "name": "uaiNames",
+        "name": "genUaiNames",
         "count": "[length(variables('regions'))]",
-        "input": "[substring(format('{0}{1}uai{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('uaiNames')]), 0, parameters('nameMaxLength'))]"
+        "input": "[substring(format('{0}{1}uai{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('genUaiNames')]), 0, min(parameters('nameMaxLength'), length(format('{0}{1}uai{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('genUaiNames')]))))]"
       },
       {
-        "name": "backupPolicyNames",
+        "name": "genBackupPolicyNames",
         "count": "[length(variables('regions'))]",
-        "input": "[substring(format('{0}{1}bkp{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('backupPolicyNames')]), 0, parameters('nameMaxLength'))]"
+        "input": "[substring(format('{0}{1}bkp{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('genBackupPolicyNames')]), 0, min(parameters('nameMaxLength'), length(format('{0}{1}bkp{2}{3}', parameters('namePrefix'), parameters('nameSep'), parameters('nameSep'), variables('regionCodes')[copyIndex('genBackupPolicyNames')]))))]"
       },
       {
         "name": "isoRunTimes",
@@ -264,7 +233,7 @@
       {
         "name": "backupPoliciesPerRegion",
         "count": "[length(variables('regions'))]",
-        "input": "[concat(if(or(equals(parameters('backupFrequency'), 'Daily'), equals(parameters('backupFrequency'), 'Both')), createArray(createObject('name', format('{0}-daily', variables('backupPolicyNames')[copyIndex('backupPoliciesPerRegion')]), 'properties', createObject('backupManagementType', 'AzureIaasVM', 'policyType', 'V1', 'schedulePolicy', createObject('schedulePolicyType', 'SimpleSchedulePolicy', 'scheduleRunFrequency', 'Daily', 'scheduleRunTimes', variables('isoRunTimes')), 'retentionPolicy', createObject('retentionPolicyType', 'LongTermRetentionPolicy', 'dailySchedule', createObject('retentionTimes', variables('isoRunTimes'), 'retentionDuration', createObject('count', parameters('dailyRetentionDays'), 'durationType', 'Days'))), 'instantRpRetentionRangeInDays', variables('dailyInstantRestoreDays'), 'timeZone', parameters('backupTimeZone')))), createArray()), if(or(equals(parameters('backupFrequency'), 'Weekly'), equals(parameters('backupFrequency'), 'Both')), createArray(createObject('name', format('{0}-weekly', variables('backupPolicyNames')[copyIndex('backupPoliciesPerRegion')]), 'properties', createObject('backupManagementType', 'AzureIaasVM', 'policyType', 'V1', 'schedulePolicy', createObject('schedulePolicyType', 'SimpleSchedulePolicy', 'scheduleRunFrequency', 'Weekly', 'scheduleRunDays', parameters('weeklyBackupDaysOfWeek'), 'scheduleRunTimes', variables('isoRunTimes')), 'retentionPolicy', variables('retentionPolicyWeekly'), 'instantRpRetentionRangeInDays', 5, 'timeZone', parameters('backupTimeZone')))), createArray()))]"
+        "input": "[concat(if(or(equals(parameters('backupFrequency'), 'Daily'), equals(parameters('backupFrequency'), 'Both')), createArray(createObject('name', format('{0}-daily', variables('backupPolicyNamesFinal')[copyIndex('backupPoliciesPerRegion')]), 'properties', createObject('backupManagementType', 'AzureIaasVM', 'policyType', 'V1', 'schedulePolicy', createObject('schedulePolicyType', 'SimpleSchedulePolicy', 'scheduleRunFrequency', 'Daily', 'scheduleRunTimes', variables('isoRunTimes')), 'retentionPolicy', createObject('retentionPolicyType', 'LongTermRetentionPolicy', 'dailySchedule', createObject('retentionTimes', variables('isoRunTimes'), 'retentionDuration', createObject('count', parameters('dailyRetentionDays'), 'durationType', 'Days'))), 'instantRpRetentionRangeInDays', variables('dailyInstantRestoreDays'), 'timeZone', parameters('backupTimeZone')))), createArray()), if(or(equals(parameters('backupFrequency'), 'Weekly'), equals(parameters('backupFrequency'), 'Both')), createArray(createObject('name', format('{0}-weekly', variables('backupPolicyNamesFinal')[copyIndex('backupPoliciesPerRegion')]), 'properties', createObject('backupManagementType', 'AzureIaasVM', 'policyType', 'V1', 'schedulePolicy', createObject('schedulePolicyType', 'SimpleSchedulePolicy', 'scheduleRunFrequency', 'Weekly', 'scheduleRunDays', parameters('weeklyBackupDaysOfWeek'), 'scheduleRunTimes', variables('isoRunTimes')), 'retentionPolicy', variables('retentionPolicyWeekly'), 'instantRpRetentionRangeInDays', 5, 'timeZone', parameters('backupTimeZone')))), createArray()))]"
       }
     ],
     "regions": [
@@ -273,6 +242,10 @@
       "swedencentral",
       "germanywestcentral"
     ],
+    "rgNamesFinal": "[if(equals(length(parameters('rgNames')), length(variables('regions'))), parameters('rgNames'), variables('genRgNames'))]",
+    "vaultNamesFinal": "[if(equals(length(parameters('vaultNames')), length(variables('regions'))), parameters('vaultNames'), variables('genVaultNames'))]",
+    "uaiNamesFinal": "[if(equals(length(parameters('uaiNames')), length(variables('regions'))), parameters('uaiNames'), variables('genUaiNames'))]",
+    "backupPolicyNamesFinal": "[if(equals(length(parameters('backupPolicyNames')), length(variables('regions'))), parameters('backupPolicyNames'), variables('genBackupPolicyNames'))]",
     "weeklyRetentionWeeks": "[int(div(add(parameters('weeklyRetentionDays'), 6), 7))]",
     "dailyInstantRestoreDays": "[min(max(parameters('instantRestoreRetentionDays'), 1), 5)]",
     "monthlyScheduleObj": "[if(parameters('enableMonthlyRetention'), createObject('monthlySchedule', createObject('retentionScheduleFormatType', 'Weekly', 'retentionScheduleWeekly', createObject('daysOfTheWeek', parameters('monthlyDaysOfWeek'), 'weeksOfTheMonth', parameters('monthlyWeeksOfMonth')), 'retentionTimes', variables('isoRunTimes'), 'retentionDuration', createObject('count', parameters('monthlyRetentionMonths'), 'durationType', 'Months'))), createObject())]",
@@ -296,7 +269,7 @@
         "mode": "Incremental",
         "parameters": {
           "name": {
-            "value": "[variables('rgNames')[copyIndex()]]"
+            "value": "[variables('rgNamesFinal')[copyIndex()]]"
           },
           "location": {
             "value": "[variables('regions')[copyIndex()]]"
@@ -771,7 +744,7 @@
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "[format('recoveryVaultModule-{0}', variables('regions')[copyIndex()])]",
-      "resourceGroup": "[variables('rgNames')[copyIndex()]]",
+      "resourceGroup": "[parameters('rgNames')[copyIndex()]]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -779,7 +752,7 @@
         "mode": "Incremental",
         "parameters": {
           "name": {
-            "value": "[variables('vaultNames')[copyIndex()]]"
+            "value": "[variables('vaultNamesFinal')[copyIndex()]]"
           },
           "location": {
             "value": "[variables('regions')[copyIndex()]]"
@@ -790,14 +763,14 @@
           "backupConfig": {
             "value": {
               "storageModelType": "GeoRedundant",
-              "softDeleteFeatureState": "Enabled"
+              "softDeleteFeatureState": "Disabled"
             }
           },
           "softDeleteSettings": {
             "value": "[parameters('softDeleteSettings')]"
           },
           "tags": {
-            "value": "[union(parameters('tags'), createObject('vaultSkuName', parameters('vaultSkuName'), 'vaultSkuTier', parameters('vaultSkuTier')))]"
+            "value": "[parameters('tags')]"
           },
           "backupPolicies": {
             "value": "[variables('backupPoliciesPerRegion')[copyIndex()]]"
@@ -4376,10 +4349,14 @@
       ]
     },
     {
+      "copy": {
+        "name": "uai",
+        "count": "[length(range(0, 1))]"
+      },
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "[format('userAssignedIdentityModule-{0}', variables('regions')[0])]",
-      "resourceGroup": "[variables('rgNames')[0]]",
+      "name": "[format('userAssignedIdentityModule-{0}', variables('regions')[range(0, 1)[copyIndex()]])]",
+      "resourceGroup": "[parameters('rgNames')[range(0, 1)[copyIndex()]]]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -4387,10 +4364,10 @@
         "mode": "Incremental",
         "parameters": {
           "name": {
-            "value": "[variables('uaiNames')[0]]"
+            "value": "[variables('uaiNamesFinal')[range(0, 1)[copyIndex()]]]"
           },
           "location": {
-            "value": "[variables('regions')[0]]"
+            "value": "[variables('regions')[range(0, 1)[copyIndex()]]]"
           },
           "tags": {
             "value": "[parameters('tags')]"
@@ -4841,7 +4818,7 @@
         }
       },
       "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[copyIndex()]), 'Microsoft.Resources/deployments', format('recoveryVaultModule-{0}', variables('regions')[0]))]"
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('rgNames')[copyIndex()]), 'Microsoft.Resources/deployments', format('recoveryVaultModule-{0}', variables('regions')[0]))]"
       ]
     },
     {
@@ -4856,7 +4833,7 @@
         "mode": "Incremental",
         "parameters": {
           "principalId": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[0]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[0])), '2025-04-01').outputs.principalId.value]"
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('rgNames')[range(0, 1)[0]]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[range(0, 1)[0]])), '2025-04-01').outputs.principalId.value]"
           },
           "roleDefinitionIdOrName": {
             "value": "[parameters('remediationRoleDefinitionId')]"
@@ -5038,7 +5015,7 @@
         }
       },
       "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[0]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[0]))]"
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('rgNames')[range(0, 1)[0]]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[range(0, 1)[0]]))]"
       ]
     }
   ],
@@ -5047,20 +5024,22 @@
       "type": "array",
       "copy": {
         "count": "[length(variables('regions'))]",
-        "input": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[copyIndex()]), 'Microsoft.Resources/deployments', format('recoveryVaultModule-{0}', variables('regions')[copyIndex()])), '2025-04-01').outputs.resourceId.value]"
+        "input": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('rgNames')[copyIndex()]), 'Microsoft.Resources/deployments', format('recoveryVaultModule-{0}', variables('regions')[copyIndex()])), '2025-04-01').outputs.resourceId.value]"
       }
     },
     "userAssignedIdentityIds": {
       "type": "array",
-      "value": [
-        "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[0]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[0])), '2025-04-01').outputs.resourceId.value]"
-      ]
+      "copy": {
+        "count": "[length(range(0, 1))]",
+        "input": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('rgNames')[range(0, 1)[range(0, 1)[copyIndex()]]]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[range(0, 1)[range(0, 1)[copyIndex()]]])), '2025-04-01').outputs.resourceId.value]"
+      }
     },
     "userAssignedIdentityPrincipalIds": {
       "type": "array",
-      "value": [
-        "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgNames')[0]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[0])), '2025-04-01').outputs.principalId.value]"
-      ]
+      "copy": {
+        "count": "[length(range(0, 1))]",
+        "input": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('rgNames')[range(0, 1)[range(0, 1)[copyIndex()]]]), 'Microsoft.Resources/deployments', format('userAssignedIdentityModule-{0}', variables('regions')[range(0, 1)[range(0, 1)[copyIndex()]]])), '2025-04-01').outputs.principalId.value]"
+      }
     }
   }
 }
