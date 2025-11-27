@@ -136,88 +136,46 @@ try {
 $targetRegions = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { $Regions.Split(',') | ForEach-Object { $_.Trim() } }
 Write-Host "Regions: $($targetRegions -join ', ') | Tag=${TagName}=${TagValue} | Freq=${BackupFrequency}"
 
-# Resolve the single shared UAI once from the infra deployment outputs and fail fast if not present.
-Write-Host "Resolving shared User Assigned Identity (UAI) from latest infra deployment outputs..."
+# Ensure a single shared UAI exists in the first selected region and use it for all assignments.
+Write-Host "Ensuring single shared UAI exists and is usable..."
 $sharedUaiId = $null
+$firstRegion = if ($targetRegions -and $targetRegions.Count -gt 0) { $targetRegions[0] } else { $DeploymentLocation }
+$vaultRg = "rsv-rg-$firstRegion"
+$uaiName = "uai-$firstRegion"
+
 try {
-  $latestJson = az deployment sub list --query "[?starts_with(name, 'multi-region-backup')]|[0]" -o json 2>$null
-  if ($latestJson) {
-    $latest = $latestJson | ConvertFrom-Json
-    $deployName = $latest.name
-    Write-Host "Inspecting deployment: $deployName"
-    $outsJson = az deployment sub show --name $deployName --query properties.outputs.userAssignedIdentityIds.value -o json 2>$null
-    if (-not $outsJson -or $outsJson -eq 'null') {
-      # try alternative key
-      $outsJson = az deployment sub show --name $deployName --query properties.outputs.userAssignedIdentityId.value -o json 2>$null
-    }
-    if ($outsJson -and $outsJson -ne 'null') {
-      $outs = $outsJson | ConvertFrom-Json
-      if ($outs -is [System.Array] -and $outs.Count -gt 0) { $sharedUaiId = $outs[0] }
-      elseif ($outs -is [string] -and $outs) { $sharedUaiId = $outs }
-    }
+  # Ensure resource group exists
+  $rg = $null
+  try { $rg = az group show -n $vaultRg -o json 2>$null | ConvertFrom-Json } catch { $rg = $null }
+  if (-not $rg) {
+    Write-Host "Creating resource group $vaultRg in $firstRegion..."
+    az group create -n $vaultRg -l $firstRegion -o none
   }
-} catch {
-  Write-Warning "Failed to read infra deployment outputs: $($_.Exception.Message)"
-}
-if (-not $sharedUaiId) {
-  if (-not $AutoCreateUai) {
-    Write-Error "Shared UAI not found in infra deployment outputs. Re-run .\scripts\Deploy-BackupInfra.ps1 and ensure the deployment completes successfully. Exiting."; exit 1
-  }
-  Write-Warning "Shared UAI not found; AutoCreateUai is enabled — attempting to create UAI in first region..."
-  try {
-    $firstRegion = if ($targetRegions -and $targetRegions.Count -gt 0) { $targetRegions[0] } else { $DeploymentLocation }
-    $vaultRg = "rsv-rg-$firstRegion"
-    $uaiName = "uai-$firstRegion"
 
-    # Ensure resource group exists
-    try {
-      $rg = az group show -n $vaultRg -o json 2>$null | ConvertFrom-Json
-      if (-not $rg) { az group create -n $vaultRg -l $firstRegion -o none }
-    } catch {
-      Write-Host "Creating resource group $vaultRg in $firstRegion..."
-      az group create -n $vaultRg -l $firstRegion -o none
-    }
-
-    # Create the user-assigned identity
+  # Ensure identity exists (create if missing)
+  $ident = $null
+  try { $ident = az identity show -g $vaultRg -n $uaiName -o json 2>$null | ConvertFrom-Json } catch { $ident = $null }
+  if (-not $ident) {
     Write-Host "Creating user-assigned identity '$uaiName' in resource group '$vaultRg'..."
-    $createdJson = az identity create -g $vaultRg -n $uaiName -o json 2>$null
-    if (-not $createdJson) { throw "az identity create returned no output" }
-    $created = $createdJson | ConvertFrom-Json
-    $sharedUaiId = $created.id
+    $createdJson = az identity create -g $vaultRg -n $uaiName -o json
+    $ident = $createdJson | ConvertFrom-Json
+  }
+  if ($ident -and $ident.id) { $sharedUaiId = $ident.id }
 
-    # Assign remediation role at subscription scope (Contributor by GUID)
+  # Ensure remediation role assignment exists at subscription scope for the identity principal
+  if ($ident -and $ident.principalId) {
     $roleGuid = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
     try {
-      Write-Host "Assigning remediation role to created UAI principalId $($created.principalId) at subscription scope..."
-      az role assignment create --assignee-object-id $created.principalId --role $roleGuid --scope "/subscriptions/$SubscriptionId" -o none
+      # attempt idempotent creation; ignore conflict
+      az role assignment create --assignee-object-id $ident.principalId --role $roleGuid --scope "/subscriptions/$SubscriptionId" -o none 2>$null
     } catch {
-      Write-Warning "Failed to create role assignment automatically: $($_.Exception.Message)" 
-    }
-  } catch {
-    Write-Error "Auto-creation of shared UAI failed: $($_.Exception.Message). Re-run infra deployment manually."; exit 1
-  }
-} else {
-  try { $check = az resource show --ids $sharedUaiId -o json 2>$null | ConvertFrom-Json } catch { $check = $null }
-  if (-not $check) {
-    if (-not $AutoCreateUai) { Write-Error "Resolved UAI id '$sharedUaiId' does not exist. Re-run infra deployment. Exiting."; exit 1 }
-    Write-Warning "Resolved UAI id '$sharedUaiId' does not exist; attempting auto-create as fallback..."
-    # attempt create in first region as above
-    try {
-      $firstRegion = if ($targetRegions -and $targetRegions.Count -gt 0) { $targetRegions[0] } else { $DeploymentLocation }
-      $vaultRg = "rsv-rg-$firstRegion"
-      $uaiName = "uai-$firstRegion"
-      try { $rg = az group show -n $vaultRg -o json 2>$null | ConvertFrom-Json } catch { $rg = $null }
-      if (-not $rg) { az group create -n $vaultRg -l $firstRegion -o none }
-      $createdJson = az identity create -g $vaultRg -n $uaiName -o json 2>$null
-      if (-not $createdJson) { throw "az identity create returned no output" }
-      $created = $createdJson | ConvertFrom-Json
-      $sharedUaiId = $created.id
-      $roleGuid = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
-      try { az role assignment create --assignee-object-id $created.principalId --role $roleGuid --scope "/subscriptions/$SubscriptionId" -o none } catch { Write-Warning "Failed to create role assignment automatically: $($_.Exception.Message)" }
-    } catch {
-      Write-Error "Auto-creation of shared UAI failed: $($_.Exception.Message). Re-run infra deployment manually."; exit 1
+      Write-Warning "Role assignment create returned: $($_.Exception.Message)" 
     }
   }
+
+  if (-not $sharedUaiId) { throw 'Failed to determine or create shared UAI id' }
+} catch {
+  Write-Error "Unable to ensure shared UAI: $($_.Exception.Message)"; exit 1
 }
 
 foreach ($r in $targetRegions) {
