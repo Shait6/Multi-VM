@@ -143,6 +143,34 @@ foreach ($r in $targetRegions) {
   $assignName = "enable-vm-backup-anyos-$r"
   $uaiId = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
 
+  # If the per-region UAI doesn't exist (we moved to a shared single UAI), attempt to resolve
+  # the shared UAI from the latest subscription deployment outputs (userAssignedIdentityIds).
+  try { $u = az resource show --ids $uaiId -o json 2>$null | ConvertFrom-Json } catch { $u = $null }
+  if (-not $u) {
+    Write-Warning "Per-region UAI not found at $uaiId. Attempting to resolve shared UAI from recent subscription deployment outputs..."
+    try {
+      $latestJson = az deployment sub list --query "[?starts_with(name, 'multi-region-backup')]|[0]" -o json 2>$null
+      if ($latestJson) {
+        $latest = $latestJson | ConvertFrom-Json
+        if ($latest -and $latest.name) {
+          $deployName = $latest.name
+          $outsJson = az deployment sub show --name $deployName --query properties.outputs.userAssignedIdentityIds.value -o json 2>$null
+          if ($outsJson) {
+            $outs = $outsJson | ConvertFrom-Json
+            if ($outs -and $outs.Count -gt 0) {
+              $candidateUai = $outs[0]
+              Write-Host "Resolved candidate shared UAI from deployment $deployName -> $candidateUai"
+              try { $u = az resource show --ids $candidateUai -o json 2>$null | ConvertFrom-Json } catch { $u = $null }
+              if ($u) { $uaiId = $candidateUai }
+            }
+          }
+        }
+      }
+    } catch {
+      Write-Warning "Failed to resolve shared UAI from deployment outputs: $($_.Exception.Message)"
+    }
+  }
+
   Write-Host "Assigning custom ANY-OS policy $assignName (vault=$vaultName, policy=$policyName)"
   $customDefId = ''
   try { $customDefId = az policy definition show -n $CustomPolicyDefinitionName --query id -o tsv } catch { Write-Warning "Failed to resolve custom policy definition $($CustomPolicyDefinitionName): $($_.Exception.Message)" }
