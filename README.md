@@ -43,7 +43,7 @@ Use case: central, auditable backup enablement without manual per-VM operations.
 
 ```
                       +-------------------------+
-                      |   CI (GitHub / ADO)    |
+                      |   CI (GitHub / ADO)     |
                       +-----------+-------------+
                                   |
                                   v
@@ -51,7 +51,7 @@ Use case: central, auditable backup enablement without manual per-VM operations.
                     | Subscription / main.bicep     |
                     | - ensure rsv-rg-<region> Rgs  |
                     | - create rsv-<region> vaults  |
-                    | - create policies              |
+                    | - create policies             |
                     +-------------------------------+
                                   |
       +---------------------------+---------------------------+
