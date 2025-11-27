@@ -150,20 +150,34 @@ foreach ($r in $targetRegions) {
     Write-Warning "Per-region UAI not found at $uaiId. Attempting to resolve shared UAI from recent subscription deployment outputs..."
     try {
       $latestJson = az deployment sub list --query "[?starts_with(name, 'multi-region-backup')]|[0]" -o json 2>$null
-      if ($latestJson) {
+      if (-not $latestJson) { Write-Warning "No recent 'multi-region-backup' subscription deployment found." }
+      else {
         $latest = $latestJson | ConvertFrom-Json
-        if ($latest -and $latest.name) {
-          $deployName = $latest.name
-          $outsJson = az deployment sub show --name $deployName --query properties.outputs.userAssignedIdentityIds.value -o json 2>$null
-          if ($outsJson) {
-            $outs = $outsJson | ConvertFrom-Json
-            if ($outs -and $outs.Count -gt 0) {
-              $candidateUai = $outs[0]
-              Write-Host "Resolved candidate shared UAI from deployment $deployName -> $candidateUai"
-              try { $u = az resource show --ids $candidateUai -o json 2>$null | ConvertFrom-Json } catch { $u = $null }
-              if ($u) { $uaiId = $candidateUai }
+        $deployName = $latest.name
+        Write-Host "Inspecting deployment: $deployName"
+
+        # Try a list of plausible output keys that may contain the UAI resource id(s)
+        $candidateKeys = @('userAssignedIdentityIds','userAssignedIdentityResourceIds','userAssignedIdentityResourceId','userAssignedIdentityId','userAssignedIdentity')
+        $candidateUai = $null
+        foreach ($k in $candidateKeys) {
+          try {
+            $q = "properties.outputs.$k.value"
+            $outsJson = az deployment sub show --name $deployName --query $q -o json 2>$null
+            if ($outsJson -and $outsJson -ne 'null') {
+              $outs = $outsJson | ConvertFrom-Json
+              if ($outs -is [System.Array] -and $outs.Count -gt 0) { $candidateUai = $outs[0]; break }
+              elseif ($outs -is [string] -and $outs) { $candidateUai = $outs; break }
             }
-          }
+          } catch { }
+        }
+
+        if ($candidateUai) {
+          Write-Host "Resolved candidate shared UAI -> $candidateUai"
+          try { $u = az resource show --ids $candidateUai -o json 2>$null | ConvertFrom-Json } catch { $u = $null }
+          if ($u) { $uaiId = $candidateUai; Write-Host "Using shared UAI id: $uaiId" }
+          else { Write-Warning "Candidate shared UAI found but resource not present: $candidateUai" }
+        } else {
+          Write-Warning "No suitable userAssignedIdentity output found in deployment $deployName"
         }
       }
     } catch {
