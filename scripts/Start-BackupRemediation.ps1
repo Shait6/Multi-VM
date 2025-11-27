@@ -143,6 +143,21 @@ $firstRegion = if ($targetRegions -and $targetRegions.Count -gt 0) { $targetRegi
 $vaultRg = "rsv-rg-$firstRegion"
 $uaiName = "uai-$firstRegion"
 
+  # Normalize and validate the selected region
+  $firstRegion = $firstRegion.Trim().ToLower()
+  if ($firstRegion.Length -lt 3) {
+    Write-Error "Selected region value '$firstRegion' looks invalid or truncated. Provide a full Azure region name (e.g. 'westeurope' or 'northeurope'). Exiting."; exit 1
+  }
+  # Validate against available Azure locations to catch typos
+  try {
+    $locCheck = az account list-locations --query "[?name=='$firstRegion'] | [0].name" -o tsv 2>$null
+    if (-not $locCheck) {
+      Write-Error "Azure region '$firstRegion' is not available for this subscription or is misspelled. Confirm available regions with 'az account list-locations -o table'. Exiting."; exit 1
+    }
+  } catch {
+    Write-Warning "Unable to validate Azure location via CLI (az). Proceeding optimistically but you may encounter region errors: $($_.Exception.Message)"
+  }
+
 try {
   # Ensure resource group exists
   $rg = $null

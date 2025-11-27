@@ -1,6 +1,7 @@
 param(
   [string]$SubscriptionId = $env:SUBSCRIPTION_ID,
   [string]$DeploymentLocation = $env:DEPLOYMENT_LOCATION,
+  [string]$Regions = $env:DEPLOY_REGIONS,
   [string]$BackupFrequency = $env:BACKUP_FREQUENCY,
   [string]$WeeklyDaysCsv = $env:WEEKLY_DAYS,
   [string]$RetentionProfile = $env:RETENTION_PROFILE,
@@ -56,6 +57,31 @@ $paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8
 
 $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
 Write-Host "Starting deployment $deployName with frequency=$BackupFrequency days=$WeeklyDaysCsv"
+
+# Create required resource groups for the regional Recovery Services Vaults up-front so nested deployments
+# do not fail if resource groups were previously deleted. This is deterministic: we create 'rsv-rg-<region>'
+# for each region in the $Regions list (falls back to $DeploymentLocation if empty).
+try {
+  $regionList = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { $Regions.Split(',') | ForEach-Object { $_.Trim() } }
+  foreach ($r in $regionList) {
+    if ([string]::IsNullOrWhiteSpace($r)) { continue }
+    $rgName = "rsv-rg-$r"
+    Write-Host "Ensuring resource group exists: $rgName (location: $r)"
+    try {
+      $exists = az group exists -n $rgName | ConvertFrom-Json
+      if (-not $exists) {
+        az group create -n $rgName -l $r -o none
+        Write-Host "Created resource group: $rgName"
+      } else {
+        Write-Host "Resource group already exists: $rgName"
+      }
+    } catch {
+      Write-Warning "Failed to ensure resource group $rgName: $($_.Exception.Message)"
+    }
+  }
+} catch {
+  Write-Warning "Failed to create pre-provision resource groups: $($_.Exception.Message)"
+}
 
 try {
   az deployment sub create --name $deployName --location $DeploymentLocation --template-file main.bicep --parameters @main-params.json -o json > deployment.json
