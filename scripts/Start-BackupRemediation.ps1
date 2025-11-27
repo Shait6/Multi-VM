@@ -143,96 +143,40 @@ if (Test-Path $repoParamsPath) {
 }
 
 foreach ($r in $targetRegions) {
-  $vaultName = "rsv-$r"
-  $vaultRg   = "rsv-rg-$r"
-  $base      = "backup-policy-$r"
-  if ($BackupFrequency -eq 'Weekly' -or $BackupFrequency -eq 'Both') { $policyName = "$base-weekly" } else { $policyName = "$base-daily" }
-
-  # If repo parameters provide explicit name arrays, prefer those (positional by region order)
+  # Simple deterministic behavior: require explicit name arrays in parameters/main.parameters.json
   $idx = $targetRegions.IndexOf($r)
-  if ($repoJson -and $repoJson.parameters) {
-    try {
-      if ($repoJson.parameters.vaultNames -and $repoJson.parameters.vaultNames.value -and $idx -ge 0 -and $idx -lt $repoJson.parameters.vaultNames.value.Count) {
-        $vaultName = $repoJson.parameters.vaultNames.value[$idx]
-      }
-    } catch {}
-    try {
-      if ($repoJson.parameters.rgNames -and $repoJson.parameters.rgNames.value -and $idx -ge 0 -and $idx -lt $repoJson.parameters.rgNames.value.Count) {
-        $vaultRg = $repoJson.parameters.rgNames.value[$idx]
-      }
-    } catch {}
-    try {
-      if ($repoJson.parameters.backupPolicyNames -and $repoJson.parameters.backupPolicyNames.value -and $idx -ge 0 -and $idx -lt $repoJson.parameters.backupPolicyNames.value.Count) {
-        $bp = $repoJson.parameters.backupPolicyNames.value[$idx]
-        if ($BackupFrequency -eq 'Weekly' -or $BackupFrequency -eq 'Both') { $policyName = "$bp-weekly" } else { $policyName = "$bp-daily" }
-      }
-    } catch {}
+  if (-not $repoJson -or -not $repoJson.parameters) {
+    Write-Warning "Parameters file not found or unreadable; remediation requires explicit name arrays. Skipping region $r."
+    continue
   }
+
+  # Read positional names from parameters; if any are missing, skip the region with a clear message
+  try { $vaultName = $repoJson.parameters.vaultNames.value[$idx] } catch { Write-Warning "vaultNames array missing or index $idx out of range; skipping $r."; continue }
+  try { $vaultRg = $repoJson.parameters.rgNames.value[$idx] } catch { Write-Warning "rgNames array missing or index $idx out of range; skipping $r."; continue }
+  try { $bpPrefix = $repoJson.parameters.backupPolicyNames.value[$idx] } catch { Write-Warning "backupPolicyNames array missing or index $idx out of range; skipping $r."; continue }
+  try { $uaiName = $repoJson.parameters.uaiNames.value[$idx] } catch { Write-Warning "uaiNames array missing or index $idx out of range; skipping $r."; continue }
+
+  if ($BackupFrequency -eq 'Weekly' -or $BackupFrequency -eq 'Both') { $policyName = "$bpPrefix-weekly" } else { $policyName = "$bpPrefix-daily" }
   $assignName = "enable-vm-backup-anyos-$r"
-  # Resolve User Assigned Identity resource id.
-  # First check the legacy guessed id (rsv-rg-<region>/uai-<region>) to preserve older behavior.
-  $uaiIdGuess = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-$r"
-  $uaiId = $null
 
-  try { $exists = az resource show --ids $uaiIdGuess -o json 2>$null | ConvertFrom-Json; if ($exists) { $uaiId = $uaiIdGuess } } catch {}
+  # Build the canonical ids
+  $backupPolicyId = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.RecoveryServices/vaults/$vaultName/backupPolicies/$policyName"
+  $uaiId = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$uaiName"
 
-  # If not found, try to derive the actual RG and UAI names from repo parameters (matches naming in main.bicep)
-  if (-not $uaiId -and $repoJson -and $repoJson.parameters) {
-    # If the repo provided explicit uaiNames array, prefer it (positional)
-    try {
-      if ($repoJson.parameters.uaiNames -and $repoJson.parameters.uaiNames.value -and $idx -ge 0 -and $idx -lt $repoJson.parameters.uaiNames.value.Count) {
-        $uaiName = $repoJson.parameters.uaiNames.value[$idx]
-        $computedGuess = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$uaiName"
-        try { $exists = az resource show --ids $computedGuess -o json 2>$null | ConvertFrom-Json; if ($exists) { $uaiId = $computedGuess } } catch {}
-        if ($uaiId) { $vaultRg = $vaultRg }
-      }
-    } catch {}
+  # Verify the backup policy and UAI exist before attempting assignment
+  $bpExists = $false
+  try { $bp = az resource show --ids $backupPolicyId -o json 2>$null | ConvertFrom-Json; if ($bp) { $bpExists = $true } } catch {}
+  if (-not $bpExists) { Write-Warning "Backup policy not found at $backupPolicyId; skipping region $r."; continue }
 
-    # If that didn't work, fall back to legacy generation from namePrefix/envTag (previous behaviour)
-    if (-not $uaiId) {
-      $namePrefix = 'rsv'; $envTag = 'np'; $nameSep = '-'; $regionShortLen = 3; $nameMaxLength = 24
-      try { if ($repoJson.parameters.namePrefix -and $repoJson.parameters.namePrefix.value) { $namePrefix = $repoJson.parameters.namePrefix.value } } catch {}
-      try { if ($repoJson.parameters.envTag -and $repoJson.parameters.envTag.value) { $envTag = $repoJson.parameters.envTag.value } } catch {}
-      try { if ($repoJson.parameters.nameSep -and $repoJson.parameters.nameSep.value) { $nameSep = $repoJson.parameters.nameSep.value } } catch {}
-      try { if ($repoJson.parameters.regionShortLen -and $repoJson.parameters.regionShortLen.value) { $regionShortLen = [int]$repoJson.parameters.regionShortLen.value } } catch {}
-      try { if ($repoJson.parameters.nameMaxLength -and $repoJson.parameters.nameMaxLength.value) { $nameMaxLength = [int]$repoJson.parameters.nameMaxLength.value } } catch {}
-
-      $cleanRegion = ($r -replace ' ', '')
-      if ($cleanRegion.Length -lt $regionShortLen) { $regionCode = $cleanRegion.ToLower() } else { $regionCode = $cleanRegion.Substring(0, $regionShortLen).ToLower() }
-
-      $fullRgName = "${namePrefix}${nameSep}${envTag}${nameSep}${regionCode}"
-      if ($fullRgName.Length -le $nameMaxLength) { $resolvedRg = $fullRgName } else { $resolvedRg = $fullRgName.Substring(0, $nameMaxLength) }
-
-      $uaiName = "${namePrefix}${nameSep}uai${nameSep}${regionCode}"
-      if ($uaiName.Length -gt $nameMaxLength) { $uaiName = $uaiName.Substring(0, $nameMaxLength) }
-
-      $computedGuess = "/subscriptions/$SubscriptionId/resourceGroups/$resolvedRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$uaiName"
-      try { $exists = az resource show --ids $computedGuess -o json 2>$null | ConvertFrom-Json; if ($exists) { $uaiId = $computedGuess } } catch {}
-      if ($uaiId) { $vaultRg = $resolvedRg }
-    }
-  }
-
-  # Last-resort: search subscription for a matching UAI resource by name (avoid complex jmespath tolower usage)
-  if (-not $uaiId) {
-    Write-Host "Fallback: searching subscription for a user-assigned identity containing region token '$r' or 'uai' in the name" -ForegroundColor Yellow
-    try {
-      $subList = az resource list --resource-type "Microsoft.ManagedIdentity/userAssignedIdentities" -o json 2>$null | ConvertFrom-Json
-      if ($subList -and $subList.Count -gt 0) {
-        $match = $subList | Where-Object { ($_.name -match $r) -or ($_.name -match 'uai') } | Select-Object -First 1
-        if ($match) { $uaiId = $match.id }
-      }
-    } catch {}
-  }
-
-  if (-not $uaiId) {
-    Write-Warning "Unable to resolve a User Assigned Identity for region $r in resource group $vaultRg. Using guessed id: $uaiIdGuess (deployment may fail if identity not present)."
-    $uaiId = $uaiIdGuess
-  }
+  $uaiExists = $false
+  try { $u = az resource show --ids $uaiId -o json 2>$null | ConvertFrom-Json; if ($u) { $uaiExists = $true } } catch {}
+  if (-not $uaiExists) { Write-Warning "User Assigned Identity not found at $uaiId; skipping region $r."; continue }
 
   Write-Host "Assigning custom ANY-OS policy $assignName (vault=$vaultName, policy=$policyName)"
   $customDefId = ''
   try { $customDefId = az policy definition show -n $CustomPolicyDefinitionName --query id -o tsv } catch { Write-Warning "Failed to resolve custom policy definition $($CustomPolicyDefinitionName): $($_.Exception.Message)" }
   if (-not $customDefId) { Write-Warning "Skipping region $r (custom policy definition not found)"; continue }
+
   try {
     az deployment sub create --name "assign-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" --location $r --template-file modules/assignCustomCentralBackupPolicy.bicep --parameters policyAssignmentName=$assignName assignmentLocation=$r assignmentIdentityId=$uaiId customPolicyDefinitionId=$customDefId vmTagName=$TagName vmTagValue=$TagValue vaultName=$vaultName backupPolicyName=$policyName -o none
   } catch {
@@ -240,6 +184,72 @@ foreach ($r in $targetRegions) {
   }
 
   # Fetch the assignment id (if created) and log the resolved backupPolicyId from the deployment outputs for debugging
+
+    # Pre-check: resolve vault resource and backup policy path before attempting assignment.
+    $backupPolicyId = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.RecoveryServices/vaults/$vaultName/backupPolicies/$policyName"
+    $bpExists = $false
+    try { $bp = az resource show --ids $backupPolicyId -o json 2>$null | ConvertFrom-Json; if ($bp) { $bpExists = $true } } catch {}
+    if (-not $bpExists) {
+      Write-Warning "Backup policy resource not found at computed id: $backupPolicyId"
+      Write-Host "Attempting to locate Recovery Services vault in subscription matching region token '$r' or vault name '$vaultName'..." -ForegroundColor Yellow
+      try {
+        $vaults = az resource list --resource-type "Microsoft.RecoveryServices/vaults" -o json 2>$null | ConvertFrom-Json
+        if ($vaults -and $vaults.Count -gt 0) {
+          # prefer exact name match, then contains region token
+          $vaultMatch = $vaults | Where-Object { $_.name -eq $vaultName } | Select-Object -First 1
+          if (-not $vaultMatch) { $vaultMatch = $vaults | Where-Object { $_.name -match $r -or $_.name -match 'rsv' } | Select-Object -First 1 }
+          if ($vaultMatch) {
+            $vaultName = $vaultMatch.name
+            $vaultRg = $vaultMatch.resourceGroup
+            $backupPolicyId = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.RecoveryServices/vaults/$vaultName/backupPolicies/$policyName"
+            try { $bp = az resource show --ids $backupPolicyId -o json 2>$null | ConvertFrom-Json; if ($bp) { $bpExists = $true } } catch {}
+            Write-Host "Located vault: $vaultName in RG: $vaultRg" -ForegroundColor Green
+          }
+        }
+      } catch {
+        Write-Warning "Vault discovery search failed: $($_.Exception.Message)"
+      }
+    }
+
+    if (-not $bpExists) {
+      Write-Warning "Unable to resolve backup policy for region $r. Computed id: $backupPolicyId. Skipping assignment."
+      continue
+    }
+
+    # Ensure the assignment identity (UAI) exists; if not, try to locate one in the same resource group or subscription.
+    $uaiExists = $false
+    try { $u = az resource show --ids $uaiId -o json 2>$null | ConvertFrom-Json; if ($u) { $uaiExists = $true } } catch {}
+    if (-not $uaiExists) {
+      Write-Host "Assignment identity not found at guessed id: $uaiId. Searching in resource group $vaultRg and subscription..." -ForegroundColor Yellow
+      try {
+        # Try search in vault RG for managed identity
+        $rgList = az resource list --resource-group $vaultRg --resource-type "Microsoft.ManagedIdentity/userAssignedIdentities" -o json 2>$null | ConvertFrom-Json
+        if ($rgList -and $rgList.Count -gt 0) { $match = $rgList | Select-Object -First 1; $uaiId = $match.id; $uaiExists = $true }
+      } catch {}
+      if (-not $uaiExists) {
+        try {
+          $subList = az resource list --resource-type "Microsoft.ManagedIdentity/userAssignedIdentities" -o json 2>$null | ConvertFrom-Json
+          if ($subList -and $subList.Count -gt 0) {
+            # prefer name containing region token or 'rsv'
+            $match = $subList | Where-Object { $_.name -match $r -or $_.name -match 'rsv' } | Select-Object -First 1
+            if (-not $match) { $match = $subList | Select-Object -First 1 }
+            if ($match) { $uaiId = $match.id; $uaiExists = $true }
+          }
+        } catch {}
+      }
+    }
+
+    if (-not $uaiExists) {
+      Write-Warning "Unable to resolve User Assigned Identity for region $r. Tried: guessed id and subscription search. Skipping assignment."
+      continue
+    }
+
+    # Proceed to create the assignment now that both backup policy and identity are resolvable
+    try {
+      az deployment sub create --name "assign-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" --location $r --template-file modules/assignCustomCentralBackupPolicy.bicep --parameters policyAssignmentName=$assignName assignmentLocation=$r assignmentIdentityId=$uaiId customPolicyDefinitionId=$customDefId vmTagName=$TagName vmTagValue=$TagValue vaultName=$vaultName backupPolicyName=$policyName -o none
+    } catch {
+      Write-Warning "Assignment deployment failed for ${r}: $($_.Exception.Message)"
+    }
   try {
     $assignId = az policy assignment show -n $assignName --query id -o tsv
   } catch {}
