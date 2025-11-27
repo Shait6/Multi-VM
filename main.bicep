@@ -116,7 +116,6 @@ module uaiSingle './modules/userAssignedIdentity.bicep' = {
     identityName: uaiNames[0]
     location: regions[0]
   }
-  dependsOn: [vaults[0]]
 }
 
 // Assign RBAC role to UAI on each RSV RG using provided remediationRoleDefinitionId
