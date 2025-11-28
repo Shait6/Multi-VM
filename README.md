@@ -18,11 +18,9 @@ The README preserves an operator-friendly, stepwise layout while documenting the
 2. Why this design (architecture rationale)
 3. Architecture (logical view)
 4. Repository layout (concise)
-5. Quick start — local and CI
-6. Parameters and pipeline notes
-7. Troubleshooting & validation
-8. Recommended hardening
-9. Summary
+5. Parameters and pipeline notes
+6. Recommended hardening
+7. Summary
 
 ---
 
@@ -41,7 +39,7 @@ This approach provides centralized control, consistent vault and policy configur
 - Regional RSVs: keep backup data co-located with VMs to meet recovery and compliance requirements.
 - Policy-driven remediation: use Azure Policy `DeployIfNotExists` for declarative, auditable and repeatable remediation runs.
 - Single shared UAI: minimizes managed identity proliferation and reduces RBAC management surface while preserving an auditable principal for remediation actions.
-- Modular Bicep + deterministic scripts: enables reproducible deployments in CI and simpler operational troubleshooting.
+- Modular Bicep + deterministic scripts: enables reproducible deployments and simpler operational troubleshooting.
 
 ---
 
@@ -81,50 +79,11 @@ This approach provides centralized control, consistent vault and policy configur
 - `parameters/` — centralized parameter file(s) such as `parameters/main.parameters.json` used by CI pipelines.
 - `Pipeline/` and `.github/workflows/` — CI definitions for GitHub Actions and Azure DevOps.
 
-Notes:
-- The repository intentionally deploys a single shared UAI rather than multiple per-region UAIs to simplify RBAC and auditing.
-- Avoid using stale compiled artifacts from `bicep-build/` in CI; the infra scripts can build Bicep on demand. If you keep `bicep-build/main.json`, ensure it is rebuilt after changes to `main.bicep`.
 
 ---
 
-## 5 — Quick start
 
-Prerequisites:
-- Azure CLI with Bicep support (`az bicep install` if needed).
-- An Azure principal with sufficient permissions to create resource groups, user assigned identities and (optionally) subscription role assignments. For initial provisioning, Owner or equivalent is recommended; for production, follow least-privilege guidance.
-
-1) Authenticate and set subscription (local):
-
-```powershell
-az login
-az account set --subscription <SUB_ID>
-```
-
-2) Build & deploy infrastructure (subscription scope):
-
-```powershell
-# Build (optional — the scripts will build if required)
-az bicep build --file main.bicep --outfile bicep-build\main.json
-
-# Deploy: the script pre-creates rsv resource groups and runs a subscription deployment
-.\scripts\Deploy-BackupInfra.ps1 -SubscriptionId <SUB_ID> -DeploymentLocation westeurope -Regions "westeurope,northeurope" -RetentionProfile "14|30|0|backup|true" -BackupTime "01:00"
-```
-
-Notes: the `-NoArtifacts` switch prevents temporary artifacts from being written to disk when running in CI or when you want a cleaner run.
-
-3) Trigger remediation (policy assignment + remediation runs):
-
-```powershell
-.\scripts\Start-BackupRemediation.ps1 -SubscriptionId <SUB_ID> -Regions "westeurope,northeurope" -DeploymentLocation westeurope -BackupFrequency Daily -TagName backup -TagValue true -Verbose
-```
-
-Operational guidance:
-- Run `Deploy-BackupInfra.ps1` first to ensure RSVs and outputs exist; `Start-BackupRemediation.ps1` will attempt to create the shared UAI if it cannot be resolved, but role assignment creation requires permission.
-- For CI, pass `Regions` and the `parameters/main.parameters.json` or explicit pipeline variables; the CI jobs in `Pipeline/` and `.github/workflows/` demonstrate patterns used by this project.
-
----
-
-## 6 — Parameters and pipeline notes
+## 5 — Parameters and pipeline notes
 
 Composite retention profile (convenience):
 
@@ -148,26 +107,7 @@ CI integration:
 
 ---
 
-## 7 — Troubleshooting & validation
-
-- Resource group missing: if a deployment fails with `ResourceGroupNotFound`, confirm the `Regions` parameter and re-run `Deploy-BackupInfra.ps1`. The script pre-creates `rsv-rg-<region>` resource groups to reduce nested-deployment failures.
-- Identity failures: `FailedIdentityOperation` typically indicates the caller lacks permission to create or use the UAI, or the identity was removed. `Start-BackupRemediation.ps1` contains deterministic fallback logic that will attempt to create the shared UAI and to create a subscription role assignment if the caller has the required permissions.
-- Stale compiled artifacts: do not rely on an old `bicep-build/main.json` produced before recent edits to `main.bicep`. Rebuild the artifact after code changes or allow the deployment script to build from source.
-
-Useful commands:
-
-- Inspect subscription deployment outputs (deployment name used by `Deploy-BackupInfra.ps1`):
-  `az deployment sub show --name <deployName> --query properties.outputs -o json`
-- List RSV groups created by the solution:
-  `az group list --query "[?starts_with(name,'rsv-')].name" -o tsv`
-- Check User Assigned Identity:
-  `az identity show -g rsv-rg-westeurope -n uai-westeurope -o json`
-- Confirm policy assignment:
-  `az policy assignment show -n enable-vm-backup-anyos-westeurope -o json`
-
----
-
-## 8 — Recommended hardening
+## 6 — Recommended hardening
 
 - Enforce least privilege: prefer a deployment principal scoped to the minimal operations required. For subscription-level role assignments you may use a privileged onboarding step handled by an operator or a separate security pipeline.
 - Protect vault access: apply private endpoints, firewall rules, and network rules according to your security posture; the `recoveryVault` module supports configurable networking patterns.
@@ -175,17 +115,9 @@ Useful commands:
 
 ---
 
-## 9 — Summary
+## 7 — Summary
 
-This repository provides a pragmatic, auditable and repeatable pattern to ensure tagged VMs are protected by Azure Backup across regions. The primary operational choices are:
+This solution delivers an auditable, and scalable way to ensure that every tag-targeted VM is reliably protected with regionally co-located Recovery Services Vaults — reducing operational risk and simplifying compliance. By combining subscription-scoped Bicep orchestration, modular templates, and idempotent PowerShell helpers with a single deterministically-created shared User Assigned Managed Identity, operators get centralized control, predictable deployments, and significantly reduced RBAC overhead. Policy-driven remediation (DeployIfNotExists) provides automated, auditable enforcement with minimal human intervention, while regional vaults preserve data residency and recovery SLAs. The outcome is faster onboarding, fewer missed backups, simpler audits, and lower operational costs — a repeatable pattern you can deploy at scale to improve recovery readiness and free your teams to focus on higher-value work.
 
-- A single shared UAI (created in the first selected region) to execute remediation in a controlled and auditable manner.
-- Subscription-scoped Bicep orchestration for consistent RSV and policy provisioning.
-- Deterministic PowerShell scripts with `-NoArtifacts` options suitable for CI runs and local execution.
-
-If you would like, I can:
-
-- add a short CI examples section showing the minimal pipeline variables required, or
-- run a quick validation on the repository to detect any references to deprecated artifacts (e.g., stale compiled JSON in `bicep-build/`).
 
 
