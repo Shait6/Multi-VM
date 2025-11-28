@@ -44,7 +44,8 @@ $paramObj = @{
   backupFrequency        = @{ value = $BackupFrequency }
   dailyRetentionDays     = @{ value = $dailyRetention }
   weeklyRetentionDays    = @{ value = $weeklyRetentionDays }
-  weeklyBackupDaysOfWeek = @{ value = $days }
+  # ensure weekly days are emitted as a JSON array (ARM expects array not comma-separated string)
+  weeklyBackupDaysOfWeek = @{ value = @($days) }
   backupScheduleRunTimes = @{ value = @($BackupTime) }
   backupTimeZone         = @{ value = $BackupTimeZone }
   instantRestoreRetentionDays = @{ value = $instant }
@@ -53,7 +54,15 @@ $paramObj = @{
   yearlyRetentionYears   = @{ value = $yearlyYears }
   remediationRoleDefinitionId = @{ value = $roleGuid }
 }
-$paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8
+
+# Write full ARM template parameter file structure so Azure CLI/ARM receives proper types
+$paramFile = @{
+  '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'
+  'contentVersion' = '1.0.0.0'
+  'parameters' = $paramObj
+}
+
+$paramFile | ConvertTo-Json -Depth 10 | Out-File main-params.json -Encoding utf8
 
 $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
 Write-Host "Starting deployment $deployName with frequency=$BackupFrequency days=$WeeklyDaysCsv"
