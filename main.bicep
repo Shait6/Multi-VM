@@ -1,6 +1,6 @@
 targetScope = 'subscription'
 
-// List of regions to deploy to
+// List of available regions
 var regions = [
   'westeurope'
   'northeurope'
@@ -68,7 +68,7 @@ resource rgs 'Microsoft.Resources/resourceGroups@2021-04-01' = [for (region, i) 
   location: region
 }]
 
-// Deploy RSV, backup policy, UAI, and RBAC in each RG/region
+// Deploy RSV, backup policy and RBAC in each RG/region
 module vaults './modules/recoveryVault.bicep' = [for (region, i) in regions: {
   name: 'recoveryVaultModule-${region}'
   scope: resourceGroup(rgNames[i])

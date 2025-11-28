@@ -1,4 +1,4 @@
-// PARAMETERS (retain original surface for main.bicep compatibility)
+// PARAMETERS 
 @description('Parent Recovery Services Vault resource name')
 param vaultName string
 @description('Name of the backup policy base (daily/weekly suffix added when Both)')
@@ -19,7 +19,7 @@ param weeklyRetentionDays int = 30
 @description('Time zone for schedule (Windows Time Zone ID)')
 @allowed([
   'UTC'
-  'Central Europe Standard Time'    // Central Europe (UTC+1)
+  'Central Europe Standard Time'    // Central Europe (UTC+1) for e.g. Poland, Denmark
 ])
 param backupTimeZone string = 'UTC'
 

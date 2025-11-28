@@ -23,7 +23,7 @@ param backupPolicyName string
 // Vault resource group follows deployment convention 'rsv-rg-<region>' where assignmentLocation == region
 var vaultRgName = 'rsv-rg-${assignmentLocation}'
 
-// Construct canonical resource Id: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.RecoveryServices/vaults/{vaultName}/backupPolicies/{policyName}
+// Construct resource Id: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.RecoveryServices/vaults/{vaultName}/backupPolicies/{policyName}
 var backupPolicyIdResolved = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${vaultRgName}/providers/Microsoft.RecoveryServices/vaults/${vaultName}/backupPolicies/${backupPolicyName}'
 
 resource policyAssign 'Microsoft.Authorization/policyAssignments@2021-06-01' = {

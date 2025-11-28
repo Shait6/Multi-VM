@@ -30,7 +30,6 @@ resource recoveryServicesVault 'Microsoft.RecoveryServices/vaults@2023-04-01' = 
     }
   }
 }
-// This module does not configure backup storage replication. Recommended replication for production is GRS.
 
 output vaultId string = recoveryServicesVault.id
 output vaultName string = recoveryServicesVault.name

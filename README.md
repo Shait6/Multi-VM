@@ -2,7 +2,13 @@
 ## Multi-Region Azure VM Backup Automation
 
 ### 1. Overview
-This repository provides a policy-driven, multi-region Azure Backup automation that centrally enables backups for tagged VMs. The current implementation uses a single shared User Assigned Identity (UAI) — created deterministically in the first selected region — to run remediation across all targeted regions. The orchestration uses subscription-scoped Bicep with reusable modules and simple PowerShell scripts for deployment and remediation.
+This repository implements a policy-driven, multi-region Azure Backup platform that enables and remediates protection for tagged Virtual Machines. The solution is designed for operational predictability, auditability and minimal identity sprawl. Key implementation choices include:
+
+- A single shared User Assigned Managed Identity (UAI) created deterministically in the first selected region; this identity is used to perform remediation across all targeted regions.
+- Subscription-scoped Bicep orchestration (`main.bicep`) built from modular components for vaults, backup policies and role assignments.
+- Idempotent PowerShell helpers for infrastructure deployment and policy remediation suitable for CI or ad-hoc execution.
+
+The README preserves an operator-friendly, stepwise layout while documenting the current deterministic behavior and operational prerequisites.
 
 ---
 
@@ -22,20 +28,20 @@ This repository provides a policy-driven, multi-region Azure Backup automation t
 
 ## 1 — Quick snapshot
 
-- Target: Automatically enable Azure Backup for VMs tagged with a configurable tag name/value across multiple regions.
-- Deployment: `main.bicep` (subscription scope) creates regional Recovery Services Vaults, backup policies and a single shared UAI used for remediation.
-- Remediation: A custom DeployIfNotExists policy (`Custom-CentralVmBackup-AnyOS`) is assigned and remediation jobs are triggered via `Start-BackupRemediation.ps1`.
+- Target: programmatic enablement of Azure Backup for Virtual Machines that match a configurable tag name/value, across one or more regions.
+- Deployment: `main.bicep` (subscription scope) creates the regional Recovery Services Vaults (RSVs), backup policies and a single shared UAI used for remediation.
+- Remediation: a custom `DeployIfNotExists` policy (`Custom-CentralVmBackup-AnyOS`) is assigned and remediation jobs are orchestrated by `Start-BackupRemediation.ps1`.
 
-Use case: central, auditable backup enablement without manual per-VM operations.
+This approach provides centralized control, consistent vault and policy configuration per region, and auditable remediation operations.
 
 ---
 
 ## 2 — Why this design (architecture rationale)
 
-- Regional vaults for data locality and predictable recovery behavior.
-- Policy-driven remediation (DeployIfNotExists) for declarative, auditable, idempotent remediation runs.
-- Single shared UAI for remediation: reduces identity sprawl and simplifies RBAC management while preserving auditability.
-- Reusable Bicep modules and small, deterministic scripts for CI and local usage.
+- Regional RSVs: keep backup data co-located with VMs to meet recovery and compliance requirements.
+- Policy-driven remediation: use Azure Policy `DeployIfNotExists` for declarative, auditable and repeatable remediation runs.
+- Single shared UAI: minimizes managed identity proliferation and reduces RBAC management surface while preserving an auditable principal for remediation actions.
+- Modular Bicep + deterministic scripts: enables reproducible deployments in CI and simpler operational troubleshooting.
 
 ---
 
@@ -43,7 +49,7 @@ Use case: central, auditable backup enablement without manual per-VM operations.
 
 ```
                       +-------------------------+
-                      |   CI (GitHub / ADO)     |
+                      |   CI (GitHub / ADO)    |
                       +-----------+-------------+
                                   |
                                   v
@@ -51,7 +57,7 @@ Use case: central, auditable backup enablement without manual per-VM operations.
                     | Subscription / main.bicep     |
                     | - ensure rsv-rg-<region> Rgs  |
                     | - create rsv-<region> vaults  |
-                    | - create policies             |
+                    | - create policies & outputs   |
                     +-------------------------------+
                                   |
       +---------------------------+---------------------------+
@@ -66,23 +72,26 @@ Use case: central, auditable backup enablement without manual per-VM operations.
 
 ## 4 — Repository layout (concise)
 
-- `main.bicep` — subscription-scoped orchestration
-- `modules/` — Bicep modules: `recoveryVault`, `backupPolicy`, `userAssignedIdentity`, `roleAssignment`, `assignCustomCentralBackupPolicy`, `backupAuditPolicy`
-- `policy-definitions/` — `customCentralVmBackup.rules.json` and `customCentralVmBackup.full.json`
+- `main.bicep` — subscription-scoped orchestration and outputs (vault IDs, policy IDs, UAI resource id/principal id).
+- `modules/` — Bicep modules: `recoveryVault`, `backupPolicy`, `userAssignedIdentity`, `roleAssignment`, `assignCustomCentralBackupPolicy`, `backupAuditPolicy`.
+- `policy-definitions/` — `customCentralVmBackup.rules.json` and `customCentralVmBackup.full.json` (policy artifacts).
 - `scripts/` — PowerShell helpers:
-  - `Deploy-BackupInfra.ps1` — builds and deploys `main.bicep`; it pre-creates regional resource groups (`rsv-rg-<region>`) to avoid nested deployment failures.
-  - `Start-BackupRemediation.ps1` — deterministic remediation: ensures a single UAI exists (creates it in the first selected region if missing), ensures necessary RBAC, assigns the custom policy and triggers remediations across regions.
-- `Pipeline/` and `.github/workflows/` — CI definitions for GitHub Actions and Azure DevOps
+  - `Deploy-BackupInfra.ps1` — builds/deploys `main.bicep`. The script pre-creates `rsv-rg-<region>` resource groups (to avoid nested deployment failures), supports a `-NoArtifacts` switch and central parameters file usage.
+  - `Start-BackupRemediation.ps1` — creates/ensures the shared UAI (in the first region), attempts subscription-level role assignment (if caller has permission), assigns the custom policy and triggers remediations. The script supports `-NoArtifacts` and deterministic fallback resolution for the UAI.
+- `parameters/` — centralized parameter file(s) such as `parameters/main.parameters.json` used by CI pipelines.
+- `Pipeline/` and `.github/workflows/` — CI definitions for GitHub Actions and Azure DevOps.
 
 Notes:
-- The repository no longer creates multiple per-region UAIs; the single shared UAI pattern is used to simplify role management and auditing.
-- Compiled artifacts are ignored and the scripts are designed to be deterministic and idempotent.
+- The repository intentionally deploys a single shared UAI rather than multiple per-region UAIs to simplify RBAC and auditing.
+- Avoid using stale compiled artifacts from `bicep-build/` in CI; the infra scripts can build Bicep on demand. If you keep `bicep-build/main.json`, ensure it is rebuilt after changes to `main.bicep`.
 
 ---
 
 ## 5 — Quick start
 
-Prereqs: `az cli` (with Bicep support), an Azure principal with rights to create resource groups, identities and role assignments (or an Owner-level principal for initial runs).
+Prerequisites:
+- Azure CLI with Bicep support (`az bicep install` if needed).
+- An Azure principal with sufficient permissions to create resource groups, user assigned identities and (optionally) subscription role assignments. For initial provisioning, Owner or equivalent is recommended; for production, follow least-privilege guidance.
 
 1) Authenticate and set subscription (local):
 
@@ -91,25 +100,27 @@ az login
 az account set --subscription <SUB_ID>
 ```
 
-2) Build & deploy infra (subscription scope):
+2) Build & deploy infrastructure (subscription scope):
 
 ```powershell
-# optional: build arm artifact
+# Build (optional — the scripts will build if required)
 az bicep build --file main.bicep --outfile bicep-build\main.json
 
-# create RGs and deploy subscription deployment (pass regions if you want multiple regions)
+# Deploy: the script pre-creates rsv resource groups and runs a subscription deployment
 .\scripts\Deploy-BackupInfra.ps1 -SubscriptionId <SUB_ID> -DeploymentLocation westeurope -Regions "westeurope,northeurope" -RetentionProfile "14|30|0|backup|true" -BackupTime "01:00"
 ```
 
-3) Trigger remediation (uses the single shared UAI):
+Notes: the `-NoArtifacts` switch prevents temporary artifacts from being written to disk when running in CI or when you want a cleaner run.
+
+3) Trigger remediation (policy assignment + remediation runs):
 
 ```powershell
 .\scripts\Start-BackupRemediation.ps1 -SubscriptionId <SUB_ID> -Regions "westeurope,northeurope" -DeploymentLocation westeurope -BackupFrequency Daily -TagName backup -TagValue true -Verbose
 ```
 
-Notes:
-- `Deploy-BackupInfra.ps1` will pre-create `rsv-rg-<region>` resource groups and then run the subscription deployment; this reduces nested deployment failures.
-- `Start-BackupRemediation.ps1` will ensure a single UAI exists in the first region you pass and will create it (and attempt to create the subscription-level role assignment) if missing. If you prefer explicit infra-only flows, run `Deploy-BackupInfra.ps1` first and then remediation.
+Operational guidance:
+- Run `Deploy-BackupInfra.ps1` first to ensure RSVs and outputs exist; `Start-BackupRemediation.ps1` will attempt to create the shared UAI if it cannot be resolved, but role assignment creation requires permission.
+- For CI, pass `Regions` and the `parameters/main.parameters.json` or explicit pipeline variables; the CI jobs in `Pipeline/` and `.github/workflows/` demonstrate patterns used by this project.
 
 ---
 
@@ -133,38 +144,48 @@ Pipeline variables (high level):
 | `enableAutoRemediation` | `true` to assign and trigger policy remediation |
 
 CI integration:
-- GitHub Actions and Azure DevOps pipelines orchestrate the same steps; pass `Regions` and `retentionProfile` through pipeline variables.
+- GitHub Actions and Azure DevOps pipelines included in this repo illustrate building, deploying and optionally running remediation. Use the centralized parameter file for predictable runs and to avoid embedding secrets in pipeline YAML.
 
 ---
 
 ## 7 — Troubleshooting & validation
 
-- If a deployment shows `ResourceGroupNotFound`, re-run `Deploy-BackupInfra.ps1` with the correct `-Regions` parameter; the script now pre-creates `rsv-rg-<region>` groups.
-- If remediation fails with `FailedIdentityOperation`, ensure the shared UAI exists and has the required role at subscription scope. `Start-BackupRemediation.ps1` will attempt to create the UAI and a subscription role assignment if permitted by the caller.
-- Use `az deployment sub show --name <deployName> --query properties.outputs -o json` to inspect deployment outputs (the subscription deployment emits `userAssignedIdentityIds` and other outputs).
+- Resource group missing: if a deployment fails with `ResourceGroupNotFound`, confirm the `Regions` parameter and re-run `Deploy-BackupInfra.ps1`. The script pre-creates `rsv-rg-<region>` resource groups to reduce nested-deployment failures.
+- Identity failures: `FailedIdentityOperation` typically indicates the caller lacks permission to create or use the UAI, or the identity was removed. `Start-BackupRemediation.ps1` contains deterministic fallback logic that will attempt to create the shared UAI and to create a subscription role assignment if the caller has the required permissions.
+- Stale compiled artifacts: do not rely on an old `bicep-build/main.json` produced before recent edits to `main.bicep`. Rebuild the artifact after code changes or allow the deployment script to build from source.
 
-Validation tips:
-- Confirm resource groups: `az group list --query "[?starts_with(name,'rsv-')].name" -o tsv`
-- Confirm identity exists: `az identity show -g rsv-rg-westeurope -n uai-westeurope -o json`
-- Confirm policy assignment: `az policy assignment show -n enable-vm-backup-anyos-westeurope -o json`
+Useful commands:
+
+- Inspect subscription deployment outputs (deployment name used by `Deploy-BackupInfra.ps1`):
+  `az deployment sub show --name <deployName> --query properties.outputs -o json`
+- List RSV groups created by the solution:
+  `az group list --query "[?starts_with(name,'rsv-')].name" -o tsv`
+- Check User Assigned Identity:
+  `az identity show -g rsv-rg-westeurope -n uai-westeurope -o json`
+- Confirm policy assignment:
+  `az policy assignment show -n enable-vm-backup-anyos-westeurope -o json`
 
 ---
 
 ## 8 — Recommended hardening
 
-- Use least-privilege principals in CI; allow the deployment principal permission to create the UAI and to create a role assignment, or have a separate security process to create the subscription role assignment for the UAI.
-- Lock down vault networking (private endpoints / firewall rules) according to your security posture; Bicep module supports public network settings.
+- Enforce least privilege: prefer a deployment principal scoped to the minimal operations required. For subscription-level role assignments you may use a privileged onboarding step handled by an operator or a separate security pipeline.
+- Protect vault access: apply private endpoints, firewall rules, and network rules according to your security posture; the `recoveryVault` module supports configurable networking patterns.
+- Audit and monitor remediation: use Azure Policy Insights and Activity Logs to track remediation operations performed by the shared UAI.
 
 ---
 
 ## 9 — Summary
 
-This repository delivers a compact, policy-driven automation to ensure tagged VMs are protected with Azure Backup across regions. The key operational decisions in the current implementation are:
+This repository provides a pragmatic, auditable and repeatable pattern to ensure tagged VMs are protected by Azure Backup across regions. The primary operational choices are:
 
-- Single shared UAI (created in the first selected region) used to run remediation across all regions.
-- Subscription-scoped Bicep orchestration that creates/vets regional resource groups and vaults.
-- Deterministic, idempotent PowerShell scripts for infra deployment and remediation.
+- A single shared UAI (created in the first selected region) to execute remediation in a controlled and auditable manner.
+- Subscription-scoped Bicep orchestration for consistent RSV and policy provisioning.
+- Deterministic PowerShell scripts with `-NoArtifacts` options suitable for CI runs and local execution.
 
-If you want me to add a short `README` section with examples for CI (GitHub Actions / Azure DevOps) showing the minimum variables to pass, I can append that quickly.
+If you would like, I can:
+
+- add a short CI examples section showing the minimal pipeline variables required, or
+- run a quick validation on the repository to detect any references to deprecated artifacts (e.g., stale compiled JSON in `bicep-build/`).
 
 

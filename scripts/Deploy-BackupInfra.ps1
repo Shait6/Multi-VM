@@ -58,9 +58,7 @@ $paramObj | ConvertTo-Json -Depth 5 | Out-File main-params.json -Encoding utf8
 $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
 Write-Host "Starting deployment $deployName with frequency=$BackupFrequency days=$WeeklyDaysCsv"
 
-# Create required resource groups for the regional Recovery Services Vaults up-front so nested deployments
-# do not fail if resource groups were previously deleted. This is deterministic: we create 'rsv-rg-<region>'
-# for each region in the $Regions list (falls back to $DeploymentLocation if empty).
+# Pre-create resource groups in target regions to avoid deployment failures
 try {
   $regionList = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { $Regions.Split(',') | ForEach-Object { $_.Trim() } }
   foreach ($r in $regionList) {
