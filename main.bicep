@@ -159,10 +159,6 @@ param remediationRoleDefinitionId string
 // Soft-delete defaults for AVM
 param softDeleteSettings object
 
-// Default tags applied to vault resources (optional)
-@description('Tags to apply to created resources. Leave empty to apply no tags.')
-param tags object = {}
-
 // Create resource groups in each region using AVM `resource-group` module
 module rgs 'br:mcr.microsoft.com/bicep/avm/res/resources/resource-group:0.4.0' = [for (region, i) in regions: {
   name: 'resourceGroupModule-${region}'
@@ -170,7 +166,6 @@ module rgs 'br:mcr.microsoft.com/bicep/avm/res/resources/resource-group:0.4.0' =
   params: {
     name: rgNames[i]
     location: region
-    tags: tags
   }
 }]
 
@@ -192,8 +187,6 @@ module vaults 'br:mcr.microsoft.com/bicep/avm/res/recovery-services/vault:0.11.1
     }
     // Soft-delete settings (shape matches AVM softDeleteSettings)
     softDeleteSettings: softDeleteSettings
-      // Pass tags through (empty object in parameters prevents tagging resources)
-      tags: tags
     // Create backup policies via AVM vault module
     backupPolicies: backupPoliciesPerRegion[i]
   }
@@ -204,8 +197,6 @@ module vaults 'br:mcr.microsoft.com/bicep/avm/res/recovery-services/vault:0.11.1
 // We pass a per-region array constructed above.
 
 // Deploy a single User Assigned Identity (UAI) in the first region only.
-// Make this a single-element array module (copy-style) so any compiler-generated
-// copyIndex usage is valid inside the module's deployment template.
 module uai 'br:mcr.microsoft.com/bicep/avm/res/managed-identity/user-assigned-identity:0.4.0' = [for i in range(0, 1): {
   name: 'userAssignedIdentityModule-${regions[i]}'
   scope: resourceGroup(rgNames[i])
@@ -213,8 +204,6 @@ module uai 'br:mcr.microsoft.com/bicep/avm/res/managed-identity/user-assigned-id
     // AVM module expects `name` for the user-assigned identity
     name: uaiNames[i]
     location: regions[i]
-    // preserve tags shape from top-level `tags` param if desired
-    tags: tags
   }
   dependsOn: [vaults[0]]
 }]
@@ -224,7 +213,6 @@ module rbacSub 'br:mcr.microsoft.com/bicep/avm/res/authorization/role-assignment
   name: 'roleAssignmentSubModule-${regions[0]}'
   params: {
     principalId: uai[0].outputs.principalId
-    // AVM parameter name is `roleDefinitionIdOrName`
     roleDefinitionIdOrName: remediationRoleDefinitionId
     principalType: 'ServicePrincipal'
   }
@@ -232,9 +220,5 @@ module rbacSub 'br:mcr.microsoft.com/bicep/avm/res/authorization/role-assignment
 
 // Export outputs as arrays for all regions
 output vaultIds array = [for (region, i) in regions: vaults[i].outputs.resourceId]
-// backup policy ids/names are created under each vault; derive them after build/deploy if needed
-// Export the single UAI as single-element arrays to avoid breaking consumers
-// `uai` is a single-element module array; expose outputs as arrays to keep
-// consumers unchanged.
 output userAssignedIdentityIds array = [for i in range(0, 1): uai[i].outputs.resourceId]
 output userAssignedIdentityPrincipalIds array = [for i in range(0, 1): uai[i].outputs.principalId]
