@@ -111,7 +111,7 @@ jobs:
       - name: Deploy policy definition (rules file)
         shell: pwsh
         run: |
-          $policyName = 'Custom-CentralVmBackup-AnyOS'
+          $policyName = 'Custom-CentralVmBackup'
           $rulesFile = 'policy-definitions/customCentralVmBackup.rules.json'
           $fullFile = 'policy-definitions/customCentralVmBackup.full.json'
           if (-not (Test-Path $rulesFile)) { Write-Host "Rules file not found: $rulesFile"; exit 0 }
@@ -132,9 +132,9 @@ jobs:
           }
           try {
             if ($paramsArg) {
-              az policy definition create --name $policyName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --params $paramsArg --mode Indexed -o json
+              az policy definition create --name $policyName --display-name "Central VM Backup" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --params $paramsArg --mode Indexed -o json
             } else {
-              az policy definition create --name $policyName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --mode Indexed -o json
+              az policy definition create --name $policyName --display-name "Central VM Backup" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --mode Indexed -o json
             }
           } finally {
             if ($paramsArg -and (Test-Path $paramsArg)) { Remove-Item $paramsArg -Force }
