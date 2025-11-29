@@ -5,11 +5,11 @@ Table of contents
 - [Business value](#business-value)
 - [Solution overview](#solution-overview)
 - [Design principles](#design-principles)
-- [Architecture](#architecture-logical)
+- [Architecture](#architecture)
 - [Deployment flow](#deployment-flow)
 - [Operational considerations](#operational-considerations)
-- [Deliverable checklist](#deliverable-checklist)
-- [Repository layout](#repository-layout)
+- [Deliverable checklist](#deliverable-checklist-pre-deploy)
+- [Repository layout](#repository-layout-quick-map)
 
 ---
 
