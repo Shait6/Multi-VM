@@ -19,6 +19,7 @@
     "yearlyWeeksOfMonth": { "value": [ "First" ] },
     "yearlyDaysOfWeek": { "value": [ "Sunday" ] },
     "publicNetworkAccess": { "value": "Enabled" },
+    "regions": { "value": [ "westeurope", "northeurope", "swedencentral", "germanywestcentral" ] },
     "rgNames": { "value": [ "rsv-prod-wes", "rsv-prod-nor", "rsv-prod-swe", "rsv-prod-ger" ] },
     "vaultNames": { "value": [ "rsv-vault-wes", "rsv-vault-nor", "rsv-vault-swe", "rsv-vault-ger" ] },
     "uaiNames": { "value": [ "rsv-uai-wes", "rsv-uai-nor", "rsv-uai-swe", "rsv-uai-ger" ] },
