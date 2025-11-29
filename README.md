@@ -1,26 +1,60 @@
 
-````markdown
-## Multi-Region Azure VM Backup — Architect Brief and Delivery Notes
 
-Executive summary
-- Purpose: provide a repeatable, auditable, policy-driven approach to ensure Azure VMs are consistently protected by Azure Backup across multiple regions.
-- Scope: subscription-level orchestration that provisions Recovery Services Vaults, backup policies, a single remediation identity, and policy assignments that remediate VMs with a configurable tag.
+Table of contents
+- [Executive summary](#executive-summary)
+- [Business value](#business-value)
+- [Solution overview](#solution-overview)
+- [Design principles](#design-principles)
+- [Architecture (logical)](#architecture-logical)
+- [Deployment flow](#deployment-flow)
+- [Operational considerations](#operational-considerations)
+- [Deliverable checklist](#deliverable-checklist)
+- [Troubleshooting and known failure modes](#troubleshooting-and-known-failure-modes)
+- [Repository layout](#repository-layout)
+- [Next steps](#next-steps)
 
-Business value
-- Compliance: enforces backup standards and retention rules across the estate.
-- Operational efficiency: reduces manual configuration and human error by using policy-based remediation.
-- Cost control: centralized retention profiles and schedules reduce accidental over-retention.
+---
 
-Solution overview (what it does)
-- Deploys one Recovery Services Vault per region and attaches consistent backup policies (Daily/Weekly schedules and long-term retention where configured).
-- Provisions one User Assigned Managed Identity (UAI) used as the remediation principal for the DeployIfNotExists policy.
-- Creates per-region policy assignments that run remediations to enroll VMs matching the tag into the appropriate vault policy.
+## Executive summary
 
-Design principles
-- Deterministic inputs: `main.bicep` requires explicit arrays for `regions`, `rgNames`, `vaultNames`, `uaiNames`, and `backupPolicyNames` so deployments are predictable.
-- Reuse AVM: core resource modules are sourced from the Azure Verified Modules registry for maintainability and consistent best-practice implementations.
-- Minimal blast radius: policy remediations are scoped per-region and target only VMs with the configured tag.
-- Idempotency: deployments and remediation runs are designed to be repeatable and safe to re-run.
+Purpose: provide a repeatable, auditable, policy-driven approach to ensure
+Azure virtual machines are consistently protected by Azure Backup across
+multiple regions.
+
+Scope: subscription-level orchestration that provisions Recovery Services
+Vaults (one per region), backup policies, a single remediation identity,
+and per-region policy assignments that remediate VMs tagged for
+protection.
+
+## Business value
+
+- Compliance: enforces backup standards and retention rules across the
+	estate.
+- Operational efficiency: reduces manual configuration and human error
+	by using policy-based remediation.
+- Cost control: centralized retention profiles and schedules reduce
+	accidental over-retention and simplify chargeback.
+
+## Solution overview
+
+- Deploy a Recovery Services Vault per region and attach consistent
+	backup policies (daily/weekly with optional long-term retention).
+- Provision a single User Assigned Managed Identity (UAI) used by the
+	remediation workflow.
+- Create per-region policy assignments that remediate VMs matching a
+	configurable tag and enroll them in the correct vault policy.
+
+## Design principles
+
+- Deterministic inputs: `main.bicep` expects explicit arrays for
+	`regions`, `rgNames`, `vaultNames`, `uaiNames`, and
+	`backupPolicyNames` so deployments are predictable and index-aligned.
+- Reuse of AVM: core resource modules are sourced from the Azure Verified
+	Modules registry for maintainability and consistent best-practice
+	implementations.
+- Minimal blast radius: policy remediations are scoped per-region and
+	target only VMs with the configured tag.
+- Idempotency: template and remediation flows are safe to re-run.
 
 Architecture (logical)
 - Subscription orchestrator (`main.bicep`) calls AVM modules to create:
@@ -29,44 +63,23 @@ Architecture (logical)
 	- A single UAI (first entry in `uaiNames`) and subscription-scoped role assignment
 	- Local module `assignCustomCentralBackupPolicy.bicep` to assign policy and create remediation
 
-### Architecture diagram
+### Architecture (logical)
 
-Below is a logical diagram showing the flow from CI/operator to subscription orchestration and remediation.
+This section provides a concise, non-SVG description of the architecture and flow.
 
-```mermaid
-flowchart LR
-  CI[CI / Operator] -->|build & params| BICEP[main.bicep (subscription orchestrator)]
-  BICEP --> RG[Resource Groups (per-region)]
-  RG --> Vaults[Recovery Services Vaults]
-  Vaults --> Policies[Backup Policies (per-vault)]
-  BICEP --> UAI[User Assigned Identity (single, remediation principal)]
-  Policies --> Assign[assignCustomCentralBackupPolicy Module]
-  Assign --> Remediation[Policy Remediation (DeployIfNotExists)]
-  Remediation --> VMs[Tagged VMs]
-  CI --> Scripts[Deploy-BackupInfra.ps1 / Start-BackupRemediation.ps1]
-  Scripts --> BICEP
-  UAI --> Assign
-  Vaults --> Assign
-```
+CI / Operator
+  ↓
+`main.bicep` (subscription orchestrator)
+  ↓
+Resource Groups (per-region)  →  Recovery Services Vaults  →  Backup Policies
+  ↓
+`assignCustomCentralBackupPolicy` (subscription assignment)
+  ↓
+Policy Remediation (DeployIfNotExists)  →  Tagged VMs enrolled into Backup
 
-If your renderer does not support Mermaid, this ASCII fallback illustrates the same flow:
-
-```
-CI/Operator
-	|
-	v
-main.bicep (subscription orchestrator) <--- scripts (build/params/deploy)
-	|
-	+--> Resource Group (per region)
-			 |
-			 +--> Recovery Services Vault (per region)
-					 |
-					 +--> Backup Policies (attached to vault)
-					 |
-					 +--> assignCustomCentralBackupPolicy (uses UAI)
-								  |
-								  +--> Policy Remediation (Enroll tagged VMs)
-```
+Notes:
+- A single User Assigned Managed Identity (UAI) is used as the remediation principal to avoid race conditions from multiple UAIs.
+- `main.bicep` uses index-aligned arrays (e.g., `regions`, `rgNames`, `vaultNames`) to make deployments deterministic and avoid `copyIndex()` leakage in compiled templates.
 
 
 Deployment flow
