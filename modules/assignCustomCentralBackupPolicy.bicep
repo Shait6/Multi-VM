@@ -20,8 +20,11 @@ param vaultName string
 @description('Backup policy name in the vault')
 param backupPolicyName string
 
+@description('Resource group containing the Recovery Services Vault. When empty, falls back to convention rsv-rg-<assignmentLocation>')
+param vaultResourceGroup string = ''
+
 // Vault resource group follows deployment convention 'rsv-rg-<region>' where assignmentLocation == region
-var vaultRgName = 'rsv-rg-${assignmentLocation}'
+var vaultRgName = (length(vaultResourceGroup) > 0) ? vaultResourceGroup : 'rsv-rg-${assignmentLocation}'
 
 // Construct canonical resource Id: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.RecoveryServices/vaults/{vaultName}/backupPolicies/{policyName}
 var backupPolicyIdResolved = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${vaultRgName}/providers/Microsoft.RecoveryServices/vaults/${vaultName}/backupPolicies/${backupPolicyName}'

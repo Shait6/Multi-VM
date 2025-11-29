@@ -5,7 +5,7 @@ param(
   [string]$BackupFrequency = $env:BACKUP_FREQUENCY,
   [string]$TagName = $env:VM_TAG_NAME,
   [string]$TagValue = $env:VM_TAG_VALUE,
-  [string]$CustomPolicyDefinitionName = 'Custom-CentralVmBackup-AnyOS'
+  [string]$CustomPolicyDefinitionName = 'Custom-CentralVmBackup'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,7 +21,7 @@ try {
 } catch { $defId = $null }
 if (-not $defId) {
   if (Test-Path $policyRulesPath) {
-    az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup (Any OS)" --rules $policyRulesPath --mode Indexed -o none
+    az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup" --rules $policyRulesPath --mode Indexed -o none
     $defId = az policy definition show -n $CustomPolicyDefinitionName --query id -o tsv
   } else { Write-Error "Policy rules missing: $policyRulesPath"; exit 1 }
 }
@@ -55,7 +55,7 @@ foreach ($r in $targetRegions) {
   try { $uaiName = $repoJson.parameters.uaiNames.value[$idx] } catch { Write-Warning "uaiNames missing for $r"; continue }
 
   $policyName = if ($BackupFrequency -eq 'Weekly' -or $BackupFrequency -eq 'Both') { "$bpPrefix-weekly" } else { "$bpPrefix-daily" }
-  $assignName = "enable-vm-backup-anyos-$r"
+  $assignName = "enable-vm-backup-$r"
 
   $backupPolicyId = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.RecoveryServices/vaults/$vaultName/backupPolicies/$policyName"
   $uaiId = "/subscriptions/$SubscriptionId/resourceGroups/$vaultRg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$uaiName"
@@ -77,14 +77,14 @@ foreach ($r in $targetRegions) {
   if (-not $u) { Write-Warning "UAI not found for $r"; continue }
 
   try {
-    az deployment sub create --name "assign-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" --location $r --template-file modules/assignCustomCentralBackupPolicy.bicep --parameters policyAssignmentName=$assignName assignmentLocation=$r assignmentIdentityId=$uaiId customPolicyDefinitionId=$defId vmTagName=$TagName vmTagValue=$TagValue vaultName=$vaultName backupPolicyName=$policyName -o none
+    az deployment sub create --name "assign-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" --location $r --template-file modules/assignCustomCentralBackupPolicy.bicep --parameters policyAssignmentName=$assignName assignmentLocation=$r assignmentIdentityId=$uaiId customPolicyDefinitionId=$defId vmTagName=$TagName vmTagValue=$TagValue vaultName=$vaultName backupPolicyName=$policyName vaultResourceGroup=$vaultRg -o none
   } catch { Write-Warning "assignment deployment failed for $r"; continue }
 
   $assignId = $null
   try { $assignId = az policy assignment show -n $assignName --query id -o tsv } catch {}
   if (-not $assignId) { Write-Warning "assignment not found: $assignName"; continue }
 
-  $remName = "remediate-vm-backup-anyos-$r"
+  $remName = "remediate-vm-backup-$r"
   try {
     az policy remediation create -n $remName --policy-assignment $assignId --resource-discovery-mode ReEvaluateCompliance --location-filters $r -o none
   } catch {
