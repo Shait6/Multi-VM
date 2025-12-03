@@ -140,11 +140,12 @@ Write-Host "Regions: $($targetRegions -join ', ') | Tag=${TagName}=${TagValue} |
 Write-Host "Ensuring single shared UAI exists and is usable..."
 $sharedUaiId = $null
 $firstRegion = if ($targetRegions -and $targetRegions.Count -gt 0) { $targetRegions[0] } else { $DeploymentLocation }
+
+# Coerce to string and normalize before using in resource names
+$firstRegion = [string]$firstRegion
+$firstRegion = $firstRegion.Trim().ToLower()
 $vaultRg = "rsv-rg-$firstRegion"
 $uaiName = "uai-$firstRegion"
-
-  # Normalize and validate the selected region
-  $firstRegion = $firstRegion.Trim().ToLower()
   if ($firstRegion.Length -lt 3) {
     Write-Error "Selected region value '$firstRegion' looks invalid or truncated. Provide a full Azure region name (e.g. 'westeurope' or 'northeurope'). Exiting."; exit 1
   }
