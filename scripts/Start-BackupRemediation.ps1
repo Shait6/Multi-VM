@@ -133,8 +133,14 @@ try {
     }
   }
 
-$targetRegions = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { @($Regions.Split(',') | ForEach-Object { $_.Trim() }) }
+$targetRegions = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { @($Regions.Split(',' ) | ForEach-Object { $_.Trim() }) }
+
+# Defensive normalization: ensure we always have an array of strings
+if (-not ($targetRegions -is [array])) { $targetRegions = @($targetRegions) }
+$targetRegions = $targetRegions | ForEach-Object { [string]$_ }
+
 Write-Host "Regions: $($targetRegions -join ', ') | Tag=${TagName}=${TagValue} | Freq=${BackupFrequency}"
+Write-Host "DEBUG: targetRegions type = $($targetRegions.GetType().FullName); count = $($targetRegions.Count)"
 
 # Ensure a single shared UAI exists in the first selected region and use it for all assignments.
 Write-Host "Ensuring single shared UAI exists and is usable..."
