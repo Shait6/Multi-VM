@@ -133,7 +133,7 @@ try {
     }
   }
 
-$targetRegions = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { $Regions.Split(',') | ForEach-Object { $_.Trim() } }
+$targetRegions = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { @($Regions.Split(',') | ForEach-Object { $_.Trim() }) }
 Write-Host "Regions: $($targetRegions -join ', ') | Tag=${TagName}=${TagValue} | Freq=${BackupFrequency}"
 
 # Ensure a single shared UAI exists in the first selected region and use it for all assignments.
