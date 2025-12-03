@@ -1,6 +1,6 @@
 {
   "properties": {
-    "displayName": "Central VM Backup (Any OS)",
+    "displayName": "Central VM Backup",
     "policyType": "Custom",
     "mode": "Indexed",
     "description": "Deploy backup protection for any Azure VM with specified tag in the same location as the recovery services vault. Image/OS filters removed to include all VMs.",

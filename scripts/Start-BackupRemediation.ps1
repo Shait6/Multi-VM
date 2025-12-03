@@ -5,7 +5,7 @@ param(
   [string]$BackupFrequency = $env:BACKUP_FREQUENCY,
   [string]$TagName = $env:VM_TAG_NAME,
   [string]$TagValue = $env:VM_TAG_VALUE,
-  [string]$CustomPolicyDefinitionName = 'Custom-CentralVmBackup-AnyOS',
+  [string]$CustomPolicyDefinitionName = 'Custom-CentralVmBackup',
   [bool]$AutoCreateUai = $true
 )
 
@@ -96,9 +96,9 @@ try {
         }
         try {
           if ($paramsFile) {
-            az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --params $paramsFile --mode Indexed -o none
+            az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --params $paramsFile --mode Indexed -o none
           } else {
-            az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --mode Indexed -o none
+            az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --mode Indexed -o none
           }
         } catch {
           Write-Warning "Failed to create policy definition from $($rulesFile): $($_.Exception.Message)"
@@ -116,9 +116,9 @@ try {
           if ($paramsObj) { $paramsObj | ConvertTo-Json -Depth 99 | Out-File -FilePath $tmpParams -Encoding utf8 }
           try {
             if (Test-Path $tmpParams) {
-              az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $tmpRules --params $tmpParams --mode Indexed -o none
+              az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup" --description "Any tagged VM in region backed up to vault using specified policy." --rules $tmpRules --params $tmpParams --mode Indexed -o none
             } else {
-              az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $tmpRules --mode Indexed -o none
+              az policy definition create --name $CustomPolicyDefinitionName --display-name "Central VM Backup" --description "Any tagged VM in region backed up to vault using specified policy." --rules $tmpRules --mode Indexed -o none
             }
           } catch {
             Write-Warning "Failed to create policy definition: $($_.Exception.Message)"
@@ -198,7 +198,7 @@ foreach ($r in $targetRegions) {
   $vaultRg   = "rsv-rg-$r"
   $base      = "backup-policy-$r"
   if ($BackupFrequency -eq 'Weekly' -or $BackupFrequency -eq 'Both') { $policyName = "$base-weekly" } else { $policyName = "$base-daily" }
-  $assignName = "enable-vm-backup-anyos-$r"
+  $assignName = "enable-vm-backup-$r"
   $uaiId = $sharedUaiId
   $customDefId = ''
   try { $customDefId = az policy definition show -n $CustomPolicyDefinitionName --query id -o tsv } catch { Write-Warning "Failed to resolve custom policy definition $($CustomPolicyDefinitionName): $($_.Exception.Message)" }
@@ -235,7 +235,7 @@ foreach ($r in $targetRegions) {
   try { $assignId = az policy assignment show -n $assignName --query id -o tsv } catch {}
   if (-not $assignId) { Write-Warning "Assignment not found in $r; skipping remediation"; continue }
 
-  $remName = "remediate-vm-backup-anyos-$r"
+  $remName = "remediate-vm-backup-$r"
   Write-Host "Triggering remediation $remName"
   az policy remediation create -n $remName --policy-assignment $assignId --resource-discovery-mode ReEvaluateCompliance --location-filters $r -o none
 }

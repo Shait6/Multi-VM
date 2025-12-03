@@ -144,7 +144,7 @@ stages:
               inlineScript: |
                 $subId = '${{ parameters.subscriptionId }}'
                 if (-not [string]::IsNullOrWhiteSpace($subId)) { az account set --subscription $subId }
-                $policyName = 'Custom-CentralVmBackup-AnyOS'
+                $policyName = 'Custom-CentralVmBackup'
                 $policyFile = 'policy-definitions/customCentralVmBackup.full.json'
                 if (-not (Test-Path $policyFile)) { Write-Host "Policy file not found: $policyFile"; exit 0 }
                 Write-Host "Creating policy definition $policyName from $policyFile (PUT via az rest)"
@@ -168,9 +168,9 @@ stages:
                   }
                   try {
                     if ($paramsArg) {
-                      az policy definition create --name $policyName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --params $paramsArg --mode Indexed -o json
+                      az policy definition create --name $policyName --display-name "Central VM Backup" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --params $paramsArg --mode Indexed -o json
                     } else {
-                      az policy definition create --name $policyName --display-name "Central VM Backup (Any OS)" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --mode Indexed -o json
+                      az policy definition create --name $policyName --display-name "Central VM Backup" --description "Any tagged VM in region backed up to vault using specified policy." --rules $rulesFile --mode Indexed -o json
                     }
                   } finally {
                     if ($paramsArg -and (Test-Path $paramsArg)) { Remove-Item $paramsArg -Force }
