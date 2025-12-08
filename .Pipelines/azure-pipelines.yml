@@ -22,20 +22,20 @@ parameters:
       - Daily
       - Weekly
       - Both
-    default: Daily
+    default: Weekly
     displayName: 'Backup Frequency'
   - name: retentionProfile
     type: string
     default: '14|30|0|backup|true'
     displayName: 'Retention Profile Daily|Weekly|Yearly|TagName|TagValue (Yearly=0 disables yearly tier)'
-  - name: weeklyBackupDaysOfWeekString
+  - name: weeklyBackupDaysOfWeek
     type: string
     default: 'Sunday,Wednesday'
     displayName: 'Weekly Backup Days (comma separated)'
-  - name: backupScheduleTimeString
+  - name: backupScheduleTime
     type: string
-    default: '23:00'
-    displayName: 'Daily schedule time (HH:mm)'
+    default: '18:30'
+    displayName: 'Backup schedule time (HH:mm)'
   - name: backupTimeZone
     type: string
     values:
@@ -44,8 +44,9 @@ parameters:
     default: 'UTC'
     displayName: 'Backup Time Zone (Windows Time Zone ID)'
   - name: instantRestoreRetentionDays
-    type: number
-    default: 5
+    type: string
+    values: ['1','2','3','4','5']
+    default: '2'
     displayName: 'Instant Restore Retention Days (1..5)'
   - name: enableMonthlyRetention
     type: string
@@ -119,9 +120,9 @@ stages:
                 if (-not [string]::IsNullOrWhiteSpace('${{ parameters.subscriptionId }}')) { $env:SUBSCRIPTION_ID='${{ parameters.subscriptionId }}' }
                 $env:DEPLOYMENT_LOCATION = '${{ parameters.deploymentLocation }}'
                 $env:BACKUP_FREQUENCY    = '${{ parameters.backupFrequency }}'
-                $env:WEEKLY_DAYS         = '${{ parameters.weeklyBackupDaysOfWeekString }}'
+                $env:WEEKLY_DAYS         = '${{ parameters.weeklyBackupDaysOfWeek }}'
                 $env:RETENTION_PROFILE   = '${{ parameters.retentionProfile }}'
-                $env:BACKUP_TIME         = '${{ parameters.backupScheduleTimeString }}'
+                $env:BACKUP_TIME         = '${{ parameters.backupScheduleTime }}'
                 $env:BACKUP_TZ           = '${{ parameters.backupTimeZone }}'
                 $env:INSTANT_RESTORE_DAYS= '${{ parameters.instantRestoreRetentionDays }}'
                 . ./scripts/Deploy-BackupInfra.ps1

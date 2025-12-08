@@ -8,8 +8,9 @@ var regions = [
   'germanywestcentral'
 ]
 
-// Resource group name pattern
-var rgNames = [for region in regions: 'rsv-rg-${region}']
+// Single resource group for all vaults
+var rgName = 'rsv-rg-central'
+var rgLocation = 'westeurope' // Primary location for the resource group
 
 // Vault and UAI name patterns
 var vaultNames = [for region in regions: 'rsv-${region}']
@@ -62,16 +63,16 @@ param vaultSkuTier string = 'Standard'
 @description('Role Definition ID or GUID for remediation identity ( Contributor )')
 param remediationRoleDefinitionId string = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
 
-// Create resource groups in each region
-resource rgs 'Microsoft.Resources/resourceGroups@2021-04-01' = [for (region, i) in regions: {
-  name: rgNames[i]
-  location: region
-}]
+// Create a single resource group for all vaults
+resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
+  name: rgName
+  location: rgLocation
+}
 
-// Deploy RSV, backup policy and RBAC in each RG/region
+// Deploy RSV, backup policy and RBAC in the single RG (vaults in different regions)
 module vaults './modules/recoveryVault.bicep' = [for (region, i) in regions: {
   name: 'recoveryVaultModule-${region}'
-  scope: resourceGroup(rgNames[i])
+  scope: resourceGroup(rgName)
   params: {
     vaultName: vaultNames[i]
     location: region
@@ -79,12 +80,12 @@ module vaults './modules/recoveryVault.bicep' = [for (region, i) in regions: {
     skuName: vaultSkuName
     skuTier: vaultSkuTier
   }
-  dependsOn: [rgs[i]]
+  dependsOn: [rg]
 }]
 
 module policies './modules/backupPolicy.bicep' = [for (region, i) in regions: {
   name: 'backupPolicyModule-${region}'
-  scope: resourceGroup(rgNames[i])
+  scope: resourceGroup(rgName)
   params: {
     vaultName: vaultNames[i]
     backupPolicyName: backupPolicyNames[i]
@@ -108,14 +109,15 @@ module policies './modules/backupPolicy.bicep' = [for (region, i) in regions: {
   dependsOn: [vaults[i]]
 }]
 
-// Create a single User Assigned Identity in the first resource group and reuse it across regions
+// Create a single User Assigned Identity in the central resource group
 module uaiSingle './modules/userAssignedIdentity.bicep' = {
   name: 'userAssignedIdentityModule-single'
-  scope: resourceGroup(rgNames[0])
+  scope: resourceGroup(rgName)
   params: {
     identityName: uaiNames[0]
-    location: regions[0]
+    location: rgLocation
   }
+  dependsOn: [rg]
 }
 
 // Assign RBAC role to UAI on each RSV RG using provided remediationRoleDefinitionId
