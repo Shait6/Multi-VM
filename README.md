@@ -4,7 +4,7 @@
 ### 1. Overview
 This repository implements a policy-driven, multi-region Azure Backup platform that enables and remediates protection for tagged Virtual Machines. The solution is designed for operational predictability, auditability and minimal identity sprawl. Key implementation choices include:
 
-- A single shared User Assigned Managed Identity (UAI) created deterministically in the first selected region; this identity is used to perform remediation across all targeted regions.
+- A single shared User Assigned Managed Identity (UAI) created in the central resource group (`rsv-rg-central`); this identity is used to perform remediation across all targeted regions.
 - Subscription-scoped Bicep orchestration (`main.bicep`) built from modular components for vaults, backup policies and role assignments.
 - Idempotent PowerShell helpers for infrastructure deployment and policy remediation suitable for CI or ad-hoc execution.
 
@@ -53,7 +53,7 @@ This approach provides centralized control, consistent vault and policy configur
                                   v
                     +-------------------------------+
                     | Subscription / main.bicep     |
-                    | - ensure rsv-rg-<region> Rgs  |
+                    | - ensure rsv-rg-central RG    |
                     | - create rsv-<region> vaults  |
                     | - create policies & outputs   |
                     +-------------------------------+
@@ -61,9 +61,10 @@ This approach provides centralized control, consistent vault and policy configur
       +---------------------------+---------------------------+
       |                                                       |
       v                                                       v
-  Recovery Services Vault (rsv-<region>)                 Azure Policy
-  - backup policies (daily/weekly)                       - Custom DeployIfNotExists
-  - protectedItems                                       - Assignment (uses single shared UAI)
+  Recovery Services Vaults (rsv-<region>)                Azure Policy
+  - All vaults in single rsv-rg-central RG               - Custom DeployIfNotExists
+  - backup policies (daily/weekly)                       - Assignment (uses single shared UAI)
+  - protectedItems (region-specific)
 ```
 
 ---
@@ -74,8 +75,8 @@ This approach provides centralized control, consistent vault and policy configur
 - `modules/` — Bicep modules: `recoveryVault`, `backupPolicy`, `userAssignedIdentity`, `roleAssignment`, `assignCustomCentralBackupPolicy`, `backupAuditPolicy`.
 - `policy-definitions/` — `customCentralVmBackup.rules.json` and `customCentralVmBackup.full.json` (policy artifacts).
 - `scripts/` — PowerShell helpers:
-  - `Deploy-BackupInfra.ps1` — builds/deploys `main.bicep`. The script pre-creates `rsv-rg-<region>` resource groups (to avoid nested deployment failures), supports a `-NoArtifacts` switch and central parameters file usage.
-  - `Start-BackupRemediation.ps1` — creates/ensures the shared UAI (in the first region), attempts subscription-level role assignment (if caller has permission), assigns the custom policy and triggers remediations. The script supports `-NoArtifacts` and deterministic fallback resolution for the UAI.
+  - `Deploy-BackupInfra.ps1` — builds/deploys `main.bicep`. The script pre-creates the central `rsv-rg-central` resource group (to avoid nested deployment failures), supports a `-NoArtifacts` switch and central parameters file usage.
+  - `Start-BackupRemediation.ps1` — ensures the shared UAI exists in the central resource group (`rsv-rg-central`), attempts subscription-level role assignment (if caller has permission), assigns the custom policy and triggers remediations. The script supports `-NoArtifacts` and deterministic fallback resolution for the UAI.
 - `parameters/` — centralized parameter file(s) such as `parameters/main.parameters.json` used by CI pipelines.
 - `Pipeline/` and `.github/workflows/` — CI definitions for GitHub Actions and Azure DevOps.
 

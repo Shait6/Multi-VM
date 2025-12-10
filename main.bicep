@@ -12,10 +12,12 @@ var regions = [
 var rgName = 'rsv-rg-central'
 var rgLocation = 'westeurope' // Primary location for the resource group
 
-// Vault and UAI name patterns
+// Vault and backup policy name patterns (per region)
 var vaultNames = [for region in regions: 'rsv-${region}']
-var uaiNames = [for region in regions: 'uai-${region}']
 var backupPolicyNames = [for region in regions: 'backup-policy-${region}']
+
+// Single UAI for the central resource group
+var uaiName = 'uai-westeurope'
 
 @description('Backup schedule run times (UTC HH:mm) applied to all region policies')
 param backupScheduleRunTimes array = [ '01:00' ]
@@ -114,7 +116,7 @@ module uaiSingle './modules/userAssignedIdentity.bicep' = {
   name: 'userAssignedIdentityModule-single'
   scope: resourceGroup(rgName)
   params: {
-    identityName: uaiNames[0]
+    identityName: uaiName
     location: rgLocation
   }
   dependsOn: [rg]

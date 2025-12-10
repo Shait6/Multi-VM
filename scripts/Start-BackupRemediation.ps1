@@ -133,45 +133,40 @@ try {
     }
   }
 
-$targetRegions = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { @($Regions.Split(',' ) | ForEach-Object { $_.Trim() }) }
+$targetRegions = if ([string]::IsNullOrWhiteSpace($Regions)) { 
+  @($DeploymentLocation) 
+} else { 
+  # Split by comma and trim each element, ensuring we get an array of strings
+  $splitRegions = $Regions.Split(',')
+  $result = @()
+  foreach ($r in $splitRegions) {
+    $trimmed = $r.Trim()
+    if (-not [string]::IsNullOrWhiteSpace($trimmed)) {
+      $result += $trimmed
+    }
+  }
+  $result
+}
 
 # Defensive normalization: ensure we always have an array of strings
 if (-not ($targetRegions -is [array])) { $targetRegions = @($targetRegions) }
-$targetRegions = $targetRegions | ForEach-Object { [string]$_ }
+if ($targetRegions.Count -eq 0) { $targetRegions = @($DeploymentLocation) }
 
 Write-Host "Regions: $($targetRegions -join ', ') | Tag=${TagName}=${TagValue} | Freq=${BackupFrequency}"
 Write-Host "DEBUG: targetRegions type = $($targetRegions.GetType().FullName); count = $($targetRegions.Count)"
 
-# Ensure a single shared UAI exists in the first selected region and use it for all assignments.
+# Ensure a single shared UAI exists in the central resource group.
 Write-Host "Ensuring single shared UAI exists and is usable..."
 $sharedUaiId = $null
-$firstRegion = if ($targetRegions -and $targetRegions.Count -gt 0) { $targetRegions[0] } else { $DeploymentLocation }
-
-# Coerce to string and normalize before using in resource names
-$firstRegion = [string]$firstRegion
-$firstRegion = $firstRegion.Trim().ToLower()
-$vaultRg = "rsv-rg-$firstRegion"
-$uaiName = "uai-$firstRegion"
-  if ($firstRegion.Length -lt 3) {
-    Write-Error "Selected region value '$firstRegion' looks invalid or truncated. Provide a full Azure region name (e.g. 'westeurope' or 'northeurope'). Exiting."; exit 1
-  }
-  # Validate against available Azure locations to catch typos
-  try {
-    $locCheck = az account list-locations --query "[?name=='$firstRegion'] | [0].name" -o tsv 2>$null
-    if (-not $locCheck) {
-      Write-Error "Azure region '$firstRegion' is not available for this subscription or is misspelled. Confirm available regions with 'az account list-locations -o table'. Exiting."; exit 1
-    }
-  } catch {
-    Write-Warning "Unable to validate Azure location via CLI (az). Proceeding optimistically but you may encounter region errors: $($_.Exception.Message)"
-  }
-
+$vaultRg = "rsv-rg-central"
+$uaiName = "uai-westeurope"
 try {
-  # Ensure resource group exists
+  # Ensure resource group exists (central RG)
   $rg = $null
   try { $rg = az group show -n $vaultRg -o json 2>$null | ConvertFrom-Json } catch { $rg = $null }
   if (-not $rg) {
-    Write-Host "Creating resource group $vaultRg in $firstRegion..."
-    az group create -n $vaultRg -l $firstRegion -o none
+    Write-Host "Creating resource group $vaultRg in westeurope..."
+    az group create -n $vaultRg -l westeurope -o none
   }
 
   # Ensure identity exists (create if missing)
@@ -202,7 +197,7 @@ try {
 
 foreach ($r in $targetRegions) {
   $vaultName = "rsv-$r"
-  $vaultRg   = "rsv-rg-$r"
+  $centralRg = "rsv-rg-central"
   $base      = "backup-policy-$r"
   if ($BackupFrequency -eq 'Weekly' -or $BackupFrequency -eq 'Both') { $policyName = "$base-weekly" } else { $policyName = "$base-daily" }
   $assignName = "enable-vm-backup-$r"
@@ -211,7 +206,7 @@ foreach ($r in $targetRegions) {
   try { $customDefId = az policy definition show -n $CustomPolicyDefinitionName --query id -o tsv } catch { Write-Warning "Failed to resolve custom policy definition $($CustomPolicyDefinitionName): $($_.Exception.Message)" }
   if (-not $customDefId) { Write-Warning "Skipping region $r (custom policy definition not found)"; continue }
   try {
-    az deployment sub create --name "assign-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" --location $r --template-file modules/assignCustomCentralBackupPolicy.bicep --parameters policyAssignmentName=$assignName assignmentLocation=$r assignmentIdentityId=$uaiId customPolicyDefinitionId=$customDefId vmTagName=$TagName vmTagValue=$TagValue vaultName=$vaultName backupPolicyName=$policyName -o none
+    az deployment sub create --name "assign-policy-$r-$(Get-Date -Format yyyyMMddHHmmss)" --location $r --template-file modules/assignCustomCentralBackupPolicy.bicep --parameters policyAssignmentName=$assignName assignmentLocation=$r assignmentIdentityId=$uaiId customPolicyDefinitionId=$customDefId vmTagName=$TagName vmTagValue=$TagValue vaultName=$vaultName backupPolicyName=$policyName vaultResourceGroup=$centralRg -o none
   } catch {
     Write-Warning "Assignment deployment failed for ${r}: $($_.Exception.Message)"
   }

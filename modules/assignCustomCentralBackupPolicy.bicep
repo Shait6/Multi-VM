@@ -19,12 +19,11 @@ param vmTagValue string = 'true'
 param vaultName string
 @description('Backup policy name in the vault')
 param backupPolicyName string
-
-// Vault resource group follows deployment convention 'rsv-rg-<region>' where assignmentLocation == region
-var vaultRgName = 'rsv-rg-${assignmentLocation}'
+@description('Resource group containing the Recovery Services Vault (default: rsv-rg-central)')
+param vaultResourceGroup string = 'rsv-rg-central'
 
 // Construct resource Id: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.RecoveryServices/vaults/{vaultName}/backupPolicies/{policyName}
-var backupPolicyIdResolved = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${vaultRgName}/providers/Microsoft.RecoveryServices/vaults/${vaultName}/backupPolicies/${backupPolicyName}'
+var backupPolicyIdResolved = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${vaultResourceGroup}/providers/Microsoft.RecoveryServices/vaults/${vaultName}/backupPolicies/${backupPolicyName}'
 
 resource policyAssign 'Microsoft.Authorization/policyAssignments@2021-06-01' = {
   name: policyAssignmentName
