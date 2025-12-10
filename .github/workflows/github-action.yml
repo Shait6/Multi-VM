@@ -81,7 +81,7 @@ jobs:
       - name: Azure Login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.serivcon }}
+          creds: ${{ secrets.NYK_ES_LDZ_SUB_107_SC }}
 
       - name: Bicep build (syntax check)
         shell: pwsh
@@ -106,7 +106,7 @@ jobs:
       - name: Azure Login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.serivcon }}
+          creds: ${{ secrets.NYK_ES_LDZ_SUB_107_SC }}
 
       - name: Deploy policy definition (rules file)
         shell: pwsh
@@ -161,7 +161,7 @@ jobs:
       - name: Azure Login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.serivcon }}
+          creds: ${{ secrets.NYK_ES_LDZ_SUB_107_SC }}
 
       - name: Trigger remediation (per-region)
         shell: pwsh
