@@ -67,27 +67,24 @@ $paramFile | ConvertTo-Json -Depth 10 | Out-File main-params.json -Encoding utf8
 $deployName = "multi-region-backup-$(Get-Date -Format yyyyMMddHHmmss)"
 Write-Host "Starting deployment $deployName with frequency=$BackupFrequency days=$WeeklyDaysCsv"
 
-# Pre-create resource groups in target regions to avoid deployment failures
+# Pre-create the single central resource group (Bicep will also create it, but this ensures it exists)
 try {
-  $regionList = if ([string]::IsNullOrWhiteSpace($Regions)) { @($DeploymentLocation) } else { $Regions.Split(',') | ForEach-Object { $_.Trim() } }
-  foreach ($r in $regionList) {
-    if ([string]::IsNullOrWhiteSpace($r)) { continue }
-    $rgName = "rsv-rg-$r"
-    Write-Host "Ensuring resource group exists: $rgName (location: $r)"
-    try {
-      $exists = az group exists -n $rgName | ConvertFrom-Json
-      if (-not $exists) {
-        az group create -n $rgName -l $r -o none
-        Write-Host "Created resource group: $rgName"
-      } else {
-        Write-Host "Resource group already exists: $rgName"
-      }
-    } catch {
-      Write-Warning "Failed to ensure resource group $($rgName): $($_.Exception.Message)"
+  $rgName = "rsv-rg-central"
+  $rgLocation = "westeurope"
+  Write-Host "Ensuring resource group exists: $rgName (location: $rgLocation)"
+  try {
+    $exists = az group exists -n $rgName | ConvertFrom-Json
+    if (-not $exists) {
+      az group create -n $rgName -l $rgLocation -o none
+      Write-Host "Created resource group: $rgName"
+    } else {
+      Write-Host "Resource group already exists: $rgName"
     }
+  } catch {
+    Write-Warning "Failed to ensure resource group $($rgName): $($_.Exception.Message)"
   }
 } catch {
-  Write-Warning "Failed to create pre-provision resource groups: $($_.Exception.Message)"
+  Write-Warning "Failed to create pre-provision resource group: $($_.Exception.Message)"
 }
 
 try {
